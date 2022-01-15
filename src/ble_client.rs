@@ -9,6 +9,8 @@ pub struct BleClient {
     bc_client: Option<Peripheral>,
 }
 
+// TODO: handle device disconnect
+
 impl BleClient {
     pub async fn new() -> Self {
         let manager = Manager::new().await.unwrap();
@@ -40,9 +42,11 @@ impl BleClient {
                 }
                 CentralEvent::DeviceConnected(id) => {
                     println!("DeviceConnected: {:?}", id);
+                    self.device_connected(&id).await?;
                 }
                 CentralEvent::DeviceDisconnected(id) => {
                     println!("DeviceDisconnected: {:?}", id);
+                    self.device_disconnected(&id).await?;
                 }
                 CentralEvent::ManufacturerDataAdvertisement {
                     id,
@@ -84,8 +88,6 @@ impl BleClient {
             }
         }
 
-        debug!("listing end");
-
         Ok(())
     }
 
@@ -107,9 +109,33 @@ impl BleClient {
             peripheral.connect().await?;
 
             self.bc_client = Some(peripheral);
+        }
 
-            // TODO: to be removed
-            self.list_bc_files().await?;
+        Ok(())
+    }
+
+    async fn device_connected(&self, id: &PeripheralId) -> Result<()> {
+        if let Some(bc) = &self.bc_client {
+            if &bc.id() == id {
+                // TODO: to be removed
+                self.list_bc_files().await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn device_disconnected(&mut self, id: &PeripheralId) -> Result<()> {
+        if let Some(bc) = &self.bc_client {
+            if &bc.id() == id {
+                // Drop current connection
+                self.bc_client.take();
+
+                info!("BK disconnected, waiting for reconnect...");
+
+                self.adapter.stop_scan().await?;
+                self.adapter.start_scan(ScanFilter::default()).await?;
+            }
         }
 
         Ok(())
