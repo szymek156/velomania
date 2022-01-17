@@ -1,12 +1,16 @@
 use anyhow::Result;
 use btleplug::api::bleuuid::BleUuid;
 use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter};
-use btleplug::platform::{Adapter, Manager, Peripheral, PeripheralId};
+use btleplug::platform::{Adapter, Manager, PeripheralId};
 use futures::stream::StreamExt;
+
+use crate::bk_gatts_service::{self, BkClient};
 
 pub struct BleClient {
     adapter: Adapter,
-    bc_client: Option<Peripheral>,
+    // TODO: peripherial should be send via channel, no kept inside BleClient struct
+    // fix it... someday
+    bk_client: Option<BkClient>,
 }
 
 // TODO: handle device disconnect
@@ -21,7 +25,7 @@ impl BleClient {
 
         Self {
             adapter,
-            bc_client: None,
+            bk_client: None,
         }
     }
 
@@ -72,25 +76,6 @@ impl BleClient {
         Ok(())
     }
 
-    pub async fn list_bc_files(&self) -> Result<()> {
-        if let Some(bc) = &self.bc_client {
-            debug!("services listing");
-            bc.discover_services().await?;
-
-            for service in &bc.services() {
-                info!(
-                    "Service UUID {}, primary: {}",
-                    service.uuid, service.primary
-                );
-                for characteristic in &service.characteristics {
-                    info!("  {:?}", characteristic);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     async fn device_discovered(&mut self, id: &PeripheralId) -> Result<()> {
         let peripheral = self.adapter.peripheral(id).await?;
 
@@ -101,24 +86,28 @@ impl BleClient {
             .local_name
             .unwrap_or(String::from("(peripheral name unknown)"));
 
-        debug!("DeviceDiscovered: {local_name}, connected {is_connected}");
+        debug!("DeviceDiscovered: {local_name} {id:?}, connected {is_connected}");
 
         // TODO: comparing UUID would be more robust
-        if local_name == "BK_GATTS" && !is_connected {
+        if local_name == bk_gatts_service::SERVICE_NAME && !is_connected {
             info!("Connecting to {local_name}");
             peripheral.connect().await?;
+            peripheral.discover_services().await?;
 
-            self.bc_client = Some(peripheral);
+            self.bk_client = Some(BkClient { client: peripheral });
         }
 
         Ok(())
     }
 
     async fn device_connected(&self, id: &PeripheralId) -> Result<()> {
-        if let Some(bc) = &self.bc_client {
-            if &bc.id() == id {
+        if let Some(bk) = &self.bk_client {
+            if &bk.client.id() == id {
                 // TODO: to be removed
-                self.list_bc_files().await?;
+                let files = bk.list_bc_files().await?;
+                info!("Files on the device {files:?}");
+
+                bk.fetch_file(&files[0]).await?;
             }
         }
 
@@ -126,15 +115,15 @@ impl BleClient {
     }
 
     async fn device_disconnected(&mut self, id: &PeripheralId) -> Result<()> {
-        if let Some(bc) = &self.bc_client {
-            if &bc.id() == id {
+        if let Some(bk) = &self.bk_client {
+            if &bk.client.id() == id {
                 // Drop current connection
-                self.bc_client.take();
+                // self.bk_client.client.take();
 
                 info!("BK disconnected, waiting for reconnect...");
 
-                self.adapter.stop_scan().await?;
-                self.adapter.start_scan(ScanFilter::default()).await?;
+                // self.adapter.stop_scan().await?;
+                // self.adapter.start_scan(ScanFilter::default()).await?;
             }
         }
 

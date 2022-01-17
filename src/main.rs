@@ -3,6 +3,7 @@
 use crate::ble_client::BleClient;
 
 mod ble_client;
+mod bk_gatts_service;
 
 #[macro_use]
 extern crate log;
