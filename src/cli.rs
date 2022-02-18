@@ -1,15 +1,25 @@
-use clap::{ErrorKind, FromArgMatches, IntoApp, Parser};
+use clap::{ErrorKind, FromArgMatches, IntoApp, Parser, Subcommand};
 use std::{
     io::{self},
     thread,
 };
 use tokio::sync::mpsc::Sender;
 
+#[derive(Parser)]
+struct Cli {
+    #[clap(subcommand)]
+    command: CLIMessages,
+}
+
 /// Things possible to control from the CLI
-#[derive(Debug, Parser)]
+#[derive(Debug, Subcommand)]
 pub enum CLIMessages {
     // Use clap to model possible commands
     // User can type help to get description, for free!
+
+    SetResistance{resistance : u8},
+
+    SetTargetPower{power: i16},
     /// Exits the application
     Exit,
 }
@@ -31,7 +41,7 @@ pub async fn control_cli(tx: Sender<CLIMessages>) {
                 break;
             }
 
-            let matches = CLIMessages::command()
+            let matches = Cli::command()
                 .no_binary_name(true)
                 .try_get_matches_from(buffer.trim().split(' '));
 
@@ -50,6 +60,7 @@ pub async fn control_cli(tx: Sender<CLIMessages>) {
                     }
                     _ => {
                         error!("Invalid command! Type 'help'");
+                        error!("{e}");
                     }
                 },
             }
