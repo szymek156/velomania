@@ -10,7 +10,7 @@ use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 pub const SERVICE_NAME: &'static str = "BK_GATTS";
-const SERVICE_UUID: Uuid = uuid_from_u16(0x00FF);
+const _SERVICE_UUID: Uuid = uuid_from_u16(0x00FF);
 const FILE_TRANS_UUID: Uuid = uuid_from_u16(0xFF01);
 const FILE_LIST_UUID: Uuid = uuid_from_u16(0xFF02);
 
@@ -100,12 +100,13 @@ impl BkClient {
 
         self.client.unsubscribe(&fetch_char).await?;
 
-        info!("Writing the file...");
+        info!("Writing the file {}...", file.filename);
         // TODO: spawn task?
         let mut filepath = OpenOptions::new()
             .write(true)
             .create(true)
-            .open("/tmp/TEST.FIT")
+            .append(false)
+            .open(format!("/tmp/{}", file.filename))
             .await?;
 
         filepath.write_all(&downloaded_file).await?;
