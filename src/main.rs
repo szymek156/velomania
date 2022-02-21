@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate num_derive;
+
 use crate::ble_client::BleClient;
 use anyhow::Result;
 use cli::{control_cli, CLIMessages};
@@ -40,6 +43,9 @@ async fn main() -> Result<()> {
 async fn run(fit: &mut FitnessMachine, mut rx: Receiver<CLIMessages>) -> Result<()> {
     fit.dump_service_info().await?;
     fit.get_features().await?;
+
+    // Use select?
+    let _status_notifications = fit.subscribe_for_status_notifications();
 
     while let Some(m) = rx.recv().await {
         match m {

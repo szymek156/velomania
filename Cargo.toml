@@ -16,4 +16,6 @@ uuid = "0.8.2"
 clap = { version = "3.1.0", features=["derive"] }
 signal-hook-async-std = "0.2.2"
 signal-hook = "0.3.13"
-
+byteorder = "1.4.3"
+num-traits = "0.2.14"
+num-derive = "0.3.3"
