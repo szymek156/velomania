@@ -4,7 +4,7 @@ extern crate num_derive;
 use crate::ble_client::BleClient;
 use anyhow::Result;
 use cli::{control_cli, CLIMessages};
-use fitness_machine_client::FitnessMachine;
+use fitness_machine_client::IndoorBikeFitnessMachine;
 use futures::StreamExt;
 use signal_hook::consts::signal::*;
 use signal_hook_async_std::Signals;
@@ -14,6 +14,7 @@ mod bk_gatts_service;
 mod ble_client;
 mod cli;
 mod fitness_machine_client;
+mod scalar_converter;
 
 #[macro_use]
 extern crate log;
@@ -22,7 +23,7 @@ extern crate log;
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+    let (tx, rx) = tokio::sync::mpsc::channel(10);
 
     control_cli(tx.clone()).await;
 
@@ -40,12 +41,12 @@ async fn main() -> Result<()> {
     res
 }
 
-async fn run(fit: &mut FitnessMachine, mut rx: Receiver<CLIMessages>) -> Result<()> {
+async fn run(fit: &mut IndoorBikeFitnessMachine, mut rx: Receiver<CLIMessages>) -> Result<()> {
     fit.dump_service_info().await?;
     fit.get_features().await?;
 
-    // Use select?
-    let _status_notifications = fit.subscribe_for_status_notifications();
+    // TODO: Use select?
+    // let _status_notifications = fit.subscribe_for_status_notifications();
 
     while let Some(m) = rx.recv().await {
         match m {
@@ -76,11 +77,11 @@ fn register_signal_handler(tx: tokio::sync::mpsc::Sender<CLIMessages>) -> () {
     });
 }
 
-async fn connect_fot_fit() -> Result<FitnessMachine> {
+async fn connect_fot_fit() -> Result<IndoorBikeFitnessMachine> {
     let ble = BleClient::new().await;
     // ble.connect_to_bc().await.unwrap();
 
-    let fit = FitnessMachine::new(&ble).await?;
+    let fit = IndoorBikeFitnessMachine::new(&ble).await?;
 
     Ok(fit)
 }
