@@ -358,7 +358,8 @@ async fn handle_notifications(
                 debug!("Got notification from INDOOR_BIKE_DATA: {:?}", data.value);
                 let parsed_data = handle_bike_data_notification(&data.value);
 
-                indoor_tx.send(parsed_data).unwrap();
+                // Send may fail, if there is no receiver
+                let _ = indoor_tx.send(parsed_data);
             }
             TRAINING_STATUS => {
                 debug!("Got notification from TRAINING_STATUS: {:?}", data.value);
@@ -376,6 +377,7 @@ async fn handle_notifications(
     }
 }
 
+/// BikeData has different fields present, depending on flag field
 #[derive(Debug, Default, Clone)]
 pub struct BikeData {
     inst_speed: Option<f64>,
@@ -390,7 +392,8 @@ pub struct BikeData {
     remaining_time: Option<u16>,
 }
 
-fn handle_bike_data_notification(value: &[u8]) -> BikeData {
+/// Handle raw stream from notification into BikeData
+fn handle_bike_data_notification(raw_data: &[u8]) -> BikeData {
     #[derive(Debug, FromPrimitive)]
     enum Flags {
         MoreData = 1 << 0, // a.k.a instantaneous speed, this is f*kd up
@@ -409,12 +412,13 @@ fn handle_bike_data_notification(value: &[u8]) -> BikeData {
     }
     const FLAGS_LEN: u16 = 13;
 
-    let flags = LittleEndian::read_u16(&value[0..]);
+    let flags = LittleEndian::read_u16(&raw_data[0..]);
 
+    // Cursor pointing current position in raw_data
     // Start after flag field
     let mut cursor = 2;
 
-    let mut data = BikeData::default();
+    let mut bike_data = BikeData::default();
 
     // For inst speed logic is reversed, additionally this field contains 2 different things
     // depending on value.
@@ -424,75 +428,81 @@ fn handle_bike_data_notification(value: &[u8]) -> BikeData {
         unimplemented!("More Data scenario is not yet implemented")
     } else {
         // If set to zero, it actually means field represents instantaneous speed
-        let raw = LittleEndian::read_u16(&value[cursor..]);
+        let raw = LittleEndian::read_u16(&raw_data[cursor..]);
+        // jump to another field
         cursor += 2;
 
         let conv = ScalarType::new().with_multiplier(1).with_dec_exp(-2);
-        data.inst_speed = Some(conv.to_scalar(raw));
+        bike_data.inst_speed = Some(conv.to_scalar(raw));
     }
 
     // Check flags bit, if set then there is a value in the data stream corresponding to that field
     for i in 1..FLAGS_LEN {
         let field_present: u16 = flags & (1 << i);
 
+        if field_present == 0 {
+            // Given field not present
+            continue;
+        }
+
         match Flags::from_u16(field_present).unwrap() {
             Flags::AvgSpeed => {
-                let raw = LittleEndian::read_u16(&value[cursor..]);
+                let raw = LittleEndian::read_u16(&raw_data[cursor..]);
                 cursor += 2;
 
                 let conv = ScalarType::new().with_multiplier(1).with_dec_exp(-2);
-                data.avg_speed = Some(conv.to_scalar(raw));
+                bike_data.avg_speed = Some(conv.to_scalar(raw));
             }
             Flags::InstCadence => {
-                let raw = LittleEndian::read_u16(&value[cursor..]);
+                let raw = LittleEndian::read_u16(&raw_data[cursor..]);
                 cursor += 2;
 
                 let conv = ScalarType::new().with_multiplier(1).with_dec_exp(-1);
-                data.inst_cadence = Some(conv.to_scalar(raw));
+                bike_data.inst_cadence = Some(conv.to_scalar(raw));
             }
             Flags::AvgCadence => {
-                let raw = LittleEndian::read_u16(&value[cursor..]);
+                let raw = LittleEndian::read_u16(&raw_data[cursor..]);
                 cursor += 2;
 
                 let conv = ScalarType::new().with_multiplier(1).with_dec_exp(-1);
-                data.avg_cadence = Some(conv.to_scalar(raw));
+                bike_data.avg_cadence = Some(conv.to_scalar(raw));
             }
             Flags::TotDistance => {
-                let raw = LittleEndian::read_u24(&value[cursor..]);
+                let raw = LittleEndian::read_u24(&raw_data[cursor..]);
                 cursor += 3;
 
-                data.tot_distance = Some(raw);
+                bike_data.tot_distance = Some(raw);
             }
             Flags::ResistanceLvl => {
-                let raw = value[cursor];
+                let raw = raw_data[cursor];
                 cursor += 1;
 
                 let conv = ScalarType::new().with_multiplier(1).with_dec_exp(1);
-                data.resistance_lvl = Some(conv.to_scalar(raw));
+                bike_data.resistance_lvl = Some(conv.to_scalar(raw));
             }
             Flags::InstPower => {
-                let raw = LittleEndian::read_i16(&value[cursor..]);
+                let raw = LittleEndian::read_i16(&raw_data[cursor..]);
                 cursor += 2;
 
-                data.inst_power = Some(raw);
+                bike_data.inst_power = Some(raw);
             }
             Flags::AvgPower => {
-                let raw = LittleEndian::read_i16(&value[cursor..]);
+                let raw = LittleEndian::read_i16(&raw_data[cursor..]);
                 cursor += 2;
 
-                data.avg_power = Some(raw);
+                bike_data.avg_power = Some(raw);
             }
             Flags::ElapsedTime => {
-                let raw = LittleEndian::read_u16(&value[cursor..]);
+                let raw = LittleEndian::read_u16(&raw_data[cursor..]);
                 cursor += 2;
 
-                data.elapsed_time = Some(raw);
+                bike_data.elapsed_time = Some(raw);
             }
             Flags::RemainingTime => {
-                let raw = LittleEndian::read_u16(&value[cursor..]);
+                let raw = LittleEndian::read_u16(&raw_data[cursor..]);
                 cursor += 2;
 
-                data.remaining_time = Some(raw);
+                bike_data.remaining_time = Some(raw);
             }
             Flags::MoreData => unreachable!(),
             Flags::MetabolicEquivalent => {
@@ -503,8 +513,8 @@ fn handle_bike_data_notification(value: &[u8]) -> BikeData {
         };
     }
 
-    debug!("Parsed bike data {data:?}");
-    data
+    debug!("Parsed bike data {bike_data:#?}");
+    bike_data
 }
 
 /// Helper function to find characteristic
