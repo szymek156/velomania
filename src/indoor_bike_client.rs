@@ -24,7 +24,8 @@ use uuid::Uuid;
 use crate::ble_client::BleClient;
 use crate::indoor_bike_data_defs::BikeData;
 use crate::indoor_bike_data_defs::BikeDataFlags;
-use crate::indoor_bike_data_defs::ControlPoint;
+use crate::indoor_bike_data_defs::ControlPointNotificationData;
+use crate::indoor_bike_data_defs::ControlPointOpCode;
 use crate::indoor_bike_data_defs::ControlPointResult;
 use crate::indoor_bike_data_defs::FitnessMachineFeatures;
 use crate::indoor_bike_data_defs::MachineStatusOpCode;
@@ -55,7 +56,7 @@ pub struct IndoorBikeFitnessMachine {
     indoor_bike_tx: Sender<BikeData>,
     training_tx: Sender<String>,
     machine_tx: Sender<String>,
-    control_point_tx: Sender<String>,
+    control_point_tx: Sender<ControlPointNotificationData>,
 }
 
 // TODO: this is very first implementation, that is not covering every possible indoor bike machine.
@@ -98,6 +99,8 @@ impl IndoorBikeFitnessMachine {
                 control_point_tx,
             };
 
+            // TODO: we should wait for control point indication that this operation succeeded
+            // before doing any other writes
             indoor_bike.request_control().await?;
 
             Ok(indoor_bike)
@@ -191,7 +194,7 @@ impl IndoorBikeFitnessMachine {
         rx
     }
 
-    pub fn subscribe_for_control_point_notifications(&self) -> Receiver<String> {
+    pub fn subscribe_for_control_point_notifications(&self) -> Receiver<ControlPointNotificationData> {
         let rx = self.control_point_tx.subscribe();
         rx
     }
@@ -224,7 +227,7 @@ impl IndoorBikeFitnessMachine {
             ));
         }
 
-        let mut data: [u8; 3] = [ControlPoint::SetTargetPower as u8, 0, 0];
+        let mut data: [u8; 3] = [ControlPointOpCode::SetTargetPower as u8, 0, 0];
 
         LittleEndian::write_i16(&mut data[1..], power);
 
@@ -244,7 +247,7 @@ impl IndoorBikeFitnessMachine {
     /// The control permission remains valid until the connection is terminated, the notification of the Fitness
     /// Machine Status is sent with the value set to Control Permission Lost
     async fn request_control(&self) -> Result<()> {
-        let data: [u8; 1] = [ControlPoint::RequestControl as u8];
+        let data: [u8; 1] = [ControlPointOpCode::RequestControl as u8];
         self.client
             .write(&self.control_point, &data, WriteType::WithResponse)
             .await
@@ -261,7 +264,7 @@ async fn subscribe_to_characteristics(
     Sender<BikeData>,
     Sender<String>,
     Sender<String>,
-    Sender<String>,
+    Sender<ControlPointNotificationData>,
 )> {
     for characteristic_uuid in [
         INDOOR_BIKE_DATA,
@@ -351,7 +354,7 @@ async fn handle_notifications(
     indoor_tx: Sender<BikeData>,
     training_tx: Sender<String>,
     machine_tx: Sender<String>,
-    control_point_tx: Sender<String>,
+    control_point_tx: Sender<ControlPointNotificationData>,
 ) {
     // TODO: when it returns none?
     while let Some(data) = notifications.next().await {
@@ -375,7 +378,8 @@ async fn handle_notifications(
             }
             CONTROL_POINT => {
                 trace!("Got notification from CONTROL_POINT: {:?}", data.value);
-                handle_control_point_notification(&data.value);
+                let cp_response = handle_control_point_notification(&data.value);
+                let _ = control_point_tx.send(cp_response);
             }
             _ => {
                 warn!(
@@ -387,14 +391,18 @@ async fn handle_notifications(
     }
 }
 
-fn handle_control_point_notification(raw_data: &[u8]) {
+fn handle_control_point_notification(raw_data: &[u8]) -> ControlPointNotificationData {
     let op_code = raw_data[0];
     assert_eq!(op_code, 0x80);
 
-    let request_op_code = ControlPoint::from_u8(raw_data[1]).unwrap();
-    let result_code = ControlPointResult::from_u8(raw_data[2]).unwrap();
+    let request_response = ControlPointNotificationData {
+        request_op_code: ControlPointOpCode::from_u8(raw_data[1]).unwrap(),
+        request_status: ControlPointResult::from_u8(raw_data[2]).unwrap(),
+    };
 
-    debug!("Control Point Notification for request {request_op_code:?} result {result_code:?}");
+    debug!("Control Point Notification response {request_response:?}");
+
+    request_response
 }
 
 fn handle_machine_status_notification(raw_data: &[u8]) {

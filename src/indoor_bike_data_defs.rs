@@ -110,18 +110,7 @@ pub enum BikeDataFlags {
 }
 pub const BIKE_DATA_FLAGS_LEN: u16 = 13;
 
-// TODO: added only those supported by SUITO
-#[derive(Debug, FromPrimitive)]
-pub enum ControlPoint {
-    RequestControl = 0x0,
-    Reset = 0x1,
-    SetTargetResistance = 0x4,
-    SetTargetPower = 0x5,
-    IndoorBikeSimulation = 0x11,
-    WheelCircumference = 0x12,
-    SpinDownControl = 0x13,
-}
-
+/// Machine indicates about it's internal state change
 #[derive(Debug, FromPrimitive)]
 pub enum MachineStatusOpCode {
     Reserved0 = 0x0,
@@ -149,8 +138,21 @@ pub enum MachineStatusOpCode {
     ControlPermissionLost = 0xFF,
 }
 
-#[derive(Debug, FromPrimitive)]
+// TODO: added only those supported by SUITO
+/// Thing you can change using control point, followed by parameter
+#[derive(Debug, FromPrimitive, Clone)]
+pub enum ControlPointOpCode {
+    RequestControl = 0x0,
+    Reset = 0x1,
+    SetTargetResistance = 0x4,
+    SetTargetPower = 0x5,
+    IndoorBikeSimulation = 0x11,
+    WheelCircumference = 0x12,
+    SpinDownControl = 0x13,
+}
 
+/// Control Point sends an indication as a response to the write request, with given status
+#[derive(Debug, FromPrimitive, Clone)]
 pub enum ControlPointResult {
     Reserved0 = 0x0,
     Success = 0x1,
@@ -161,6 +163,13 @@ pub enum ControlPointResult {
     // 0x06-0xff - reserved
 }
 
+/// Data that is returned by control point indication
+/// It's a response to write request that happened prior that
+#[derive(Debug, Clone)]
+pub struct ControlPointNotificationData {
+    pub request_op_code: ControlPointOpCode,
+    pub request_status: ControlPointResult,
+}
 /// Struct holding supported range of values to set for given characteristic
 #[derive(Debug)]
 pub struct Range<T, S = T> {

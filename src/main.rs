@@ -1,11 +1,13 @@
 #[macro_use]
 extern crate num_derive;
+use anyhow::anyhow;
 
 use crate::ble_client::BleClient;
 use anyhow::Result;
 use cli::{control_cli, CLIMessages};
-use indoor_bike_client::IndoorBikeFitnessMachine;
 use futures::StreamExt;
+use indoor_bike_client::IndoorBikeFitnessMachine;
+use indoor_bike_data_defs::{ControlPointOpCode, ControlPointResult};
 use signal_hook::consts::signal::*;
 use signal_hook_async_std::Signals;
 use tokio::{sync::mpsc::Receiver, task};
@@ -14,8 +16,8 @@ mod bk_gatts_service;
 mod ble_client;
 mod cli;
 mod indoor_bike_client;
-mod scalar_converter;
 mod indoor_bike_data_defs;
+mod scalar_converter;
 
 #[macro_use]
 extern crate log;
@@ -49,6 +51,8 @@ async fn run(fit: &mut IndoorBikeFitnessMachine, mut rx: Receiver<CLIMessages>) 
     // TODO: Use select?
     // let _status_notifications = fit.subscribe_for_status_notifications();
 
+    let mut cp_notifications = fit.subscribe_for_control_point_notifications();
+
     while let Some(message) = rx.recv().await {
         match message {
             CLIMessages::Exit => {
@@ -57,11 +61,21 @@ async fn run(fit: &mut IndoorBikeFitnessMachine, mut rx: Receiver<CLIMessages>) 
             }
             CLIMessages::SetResistance { resistance } => {
                 fit.set_resistance(resistance).await?;
-            },
+            }
             CLIMessages::SetTargetPower { power } => {
                 fit.set_power(power).await?;
-            },
-            // _ => unimplemented!(),
+            }
+        }
+
+        // Wait for CP notification response for above write request
+        let resp = cp_notifications.recv().await?;
+        match resp.request_status {
+            ControlPointResult::Success => {
+                debug!("Got ACK for request {resp:?}");
+            }
+            _ => {
+                error!("Received NACK for request: {resp:?}");
+            }
         }
     }
 
