@@ -53,7 +53,7 @@ impl BleClient {
 
         // Instead of bool flags, do a state machine
         let mut connection_successful = false;
-        let mut connected_device = None;
+        let mut connected_device = "Not set".to_string();
         while let Some(event) = events.next().await {
             match event {
                 CentralEvent::DeviceDiscovered(id) => {
@@ -86,7 +86,7 @@ impl BleClient {
                     } else {
                         info!("Connected!");
                         connection_successful = true;
-                        connected_device = Some(local_name);
+                        connected_device = local_name.to_string();
                     }
                 }
                 CentralEvent::DeviceConnected(id) => {
@@ -103,11 +103,13 @@ impl BleClient {
                     if found.is_some() {
                         return Ok(Some(peripheral));
                     } else {
-                        let local_name = connected_device.unwrap();
+                        let local_name = connected_device;
                         warn!("{local_name} Does not have requested service, disconnecting");
+
+                        // TODO: this disconnects unrelated BT devices, like headphones :D
                         peripheral.disconnect().await?;
                         connection_successful = false;
-                        connected_device = None;
+                        connected_device = "Not set".to_string();
                     }
                 }
                 CentralEvent::DeviceDisconnected(id) => {

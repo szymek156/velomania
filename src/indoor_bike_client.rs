@@ -1,11 +1,15 @@
+//! Implementation of GATTS Fitness Machine of type Indoor Bike
+//! Refer to BLE GATTS Fitness Machine Profile documentation
 use std::pin::Pin;
 
 use anyhow::anyhow;
+use anyhow::Context;
 use anyhow::Result;
 use btleplug::api::bleuuid::uuid_from_u16;
 use btleplug::api::Characteristic;
 use btleplug::api::Peripheral as _;
 use btleplug::api::ValueNotification;
+use btleplug::api::WriteType;
 use btleplug::platform::Peripheral;
 use futures::Stream;
 use futures::StreamExt;
@@ -18,88 +22,28 @@ use tokio::sync::broadcast::Sender;
 use uuid::Uuid;
 
 use crate::ble_client::BleClient;
+use crate::indoor_bike_data_defs::BikeData;
+use crate::indoor_bike_data_defs::BikeDataFlags;
+use crate::indoor_bike_data_defs::ControlPoint;
+use crate::indoor_bike_data_defs::ControlPointResult;
+use crate::indoor_bike_data_defs::FitnessMachineFeatures;
+use crate::indoor_bike_data_defs::MachineStatusOpCode;
+use crate::indoor_bike_data_defs::Range;
+use crate::indoor_bike_data_defs::TargetSettingFeatures;
+use crate::indoor_bike_data_defs::BIKE_DATA_FLAGS_LEN;
+use crate::indoor_bike_data_defs::CONTROL_POINT;
+use crate::indoor_bike_data_defs::FITNESS_MACHINE_FEATURES_LEN;
+use crate::indoor_bike_data_defs::INDOOR_BIKE_DATA;
+use crate::indoor_bike_data_defs::MACHINE_FEATURE;
+use crate::indoor_bike_data_defs::MACHINE_STATUS;
+use crate::indoor_bike_data_defs::SERVICE_UUID;
+use crate::indoor_bike_data_defs::SUPPORTED_POWER_RANGE;
+use crate::indoor_bike_data_defs::SUPPORTED_RESISTANCE_LEVEL;
+use crate::indoor_bike_data_defs::TARGET_SETTING_FEATURES_LEN;
+use crate::indoor_bike_data_defs::TRAINING_STATUS;
 use crate::scalar_converter::ScalarType;
 
 // TODO: it's getting messy, refactor
-
-/// GATTS Service UUID
-const SERVICE_UUID: Uuid = uuid_from_u16(0x1826);
-
-/// READ, Characteristic to retrieve supported features
-/// Like cadence, power measurement, etc
-const MACHINE_FEATURE: Uuid = uuid_from_u16(0x2ACC);
-
-/// NOTIFY, gets current speed, cadence, power, etc
-const INDOOR_BIKE_DATA: Uuid = uuid_from_u16(0x2AD2);
-
-/// NOTIFY: something like, idle, warming up, low/high interval, fitness test, cool down, manual mode
-const TRAINING_STATUS: Uuid = uuid_from_u16(0x2AD3);
-
-/// READ: gets supported resistance level
-const SUPPORTED_RESISTANCE_LEVEL: Uuid = uuid_from_u16(0x2AD6);
-
-/// READ: gets supported power range
-const SUPPORTED_POWER_RANGE: Uuid = uuid_from_u16(0x2AD8);
-
-/// NOTIFY, gets machine status changes
-const MACHINE_STATUS: Uuid = uuid_from_u16(0x2ADA);
-
-/// INDICATE, WRITE send control messages
-const CONTROL_POINT: Uuid = uuid_from_u16(0x2AD9);
-
-#[derive(Debug, FromPrimitive)]
-#[non_exhaustive]
-pub enum FitnessMachineFeatures {
-    AvgSpeed = 1 << 0,
-    Cadence = 1 << 1,
-    TotalDistance = 1 << 2,
-    Inclination = 1 << 3,
-    Elevation = 1 << 4,
-    Pace = 1 << 5,
-    StepCount = 1 << 6,
-    Resistance = 1 << 7,
-    StrideCount = 1 << 8,
-    ExpendedEnergy = 1 << 9,
-    HRMeasurement = 1 << 10,
-    MetabolicEquivalent = 1 << 11,
-    ElapsedTime = 1 << 12,
-    RemainingTime = 1 << 13,
-    PowerMeasurement = 1 << 14,
-    ForceOnBeltAndPowerOutputSupported = 1 << 15,
-    UserDataRetention = 1 << 16,
-}
-const FITNESS_MACHINE_FEATURES_LEN: u32 = 17;
-
-#[derive(Debug, FromPrimitive)]
-#[non_exhaustive]
-pub enum TargetSettingFeatures {
-    SpeedTarget = 1 << 0,
-    Inclination = 1 << 1,
-    Resistance = 1 << 2,
-    Power = 1 << 3,
-    HR = 1 << 4,
-    TargetedExpendedEnergyConfiguration = 1 << 5,
-    TargetedStepNumber = 1 << 6,
-    TargetedStrideNumber = 1 << 7,
-    TargetedDistance = 1 << 8,
-    TargetedTrainingTime = 1 << 9,
-    TargetedTimeIn2HRZones = 1 << 10,
-    TargetedTimeIn3HRZones = 1 << 11,
-    TargetedTimeIn5HRZones = 1 << 12,
-    IndoorBikeSimulation = 1 << 13,
-    WheelCircumference = 1 << 14,
-    SpinDownControl = 1 << 15,
-    TargetedCadence = 1 << 16,
-}
-const TARGET_SETTING_FEATURES_LEN: u32 = 17;
-
-/// Struct holding supported range of values to set for given characteristic
-#[derive(Debug)]
-struct Range<T, S = T> {
-    min: T,
-    max: T,
-    step: S,
-}
 
 /// Implementation of FitnessMachine GATTS profile for Indoor Bike
 pub struct IndoorBikeFitnessMachine {
@@ -142,7 +86,7 @@ impl IndoorBikeFitnessMachine {
             let power_range = get_power_range(&client).await?;
             info!("Supported power range {power_range:?}");
 
-            Ok(IndoorBikeFitnessMachine {
+            let indoor_bike = IndoorBikeFitnessMachine {
                 client,
                 control_point,
                 feature,
@@ -152,7 +96,11 @@ impl IndoorBikeFitnessMachine {
                 training_tx,
                 machine_tx,
                 control_point_tx,
-            })
+            };
+
+            indoor_bike.request_control().await?;
+
+            Ok(indoor_bike)
         } else {
             Err(anyhow!("Fitness machine device not found"))
         }
@@ -201,7 +149,7 @@ impl IndoorBikeFitnessMachine {
             ));
         }
 
-        debug!("Feature raw response {raw:?}");
+        trace!("Feature raw response {raw:?}");
         let fitness_features = LittleEndian::read_u32(&raw[0..4]);
 
         info!("Fitness features supported:");
@@ -247,6 +195,63 @@ impl IndoorBikeFitnessMachine {
         let rx = self.control_point_tx.subscribe();
         rx
     }
+
+    pub async fn set_resistance(&self, resistance: u8) -> Result<()> {
+        // if !self.resistance_range.in_range(resistance) {
+        //     return Err(anyhow!("Resistance {resistance} outside valid range {:?}", self.resistance_range));
+        // }
+        // let data: [u8; 1] = [ControlPoint::RequestControl as u8];
+        // self.client
+        //     .write(&self.control_point, &data, WriteType::WithResponse)
+        //     .await?;
+
+        // let data : [u8; 2] = [ControlPoint::SetTargetResistance as u8, resistance];
+
+        // self.client
+        //     .write(&self.control_point, &data, WriteType::WithResponse)
+        //     .await?;
+
+        // Ok(())
+
+        todo!()
+    }
+
+    pub async fn set_power(&self, power: i16) -> Result<()> {
+        if !self.power_range.in_range(power) {
+            return Err(anyhow!(
+                "Resistance {power} outside valid range {:?}",
+                self.power_range
+            ));
+        }
+
+        let mut data: [u8; 3] = [ControlPoint::SetTargetPower as u8, 0, 0];
+
+        LittleEndian::write_i16(&mut data[1..], power);
+
+        match self
+            .client
+            .write(&self.control_point, &data, WriteType::WithResponse)
+            .await
+            .context("while setting power")
+        {
+            Ok(_) => debug!("Set power succeeded"),
+            Err(e) => error!("Failed to set power: '{e:?}', continuing"),
+        }
+
+        Ok(())
+    }
+
+    /// The control permission remains valid until the connection is terminated, the notification of the Fitness
+    /// Machine Status is sent with the value set to Control Permission Lost
+    async fn request_control(&self) -> Result<()> {
+        let data: [u8; 1] = [ControlPoint::RequestControl as u8];
+        self.client
+            .write(&self.control_point, &data, WriteType::WithResponse)
+            .await
+            .context("while sending request control")?;
+
+        Ok(())
+    }
 }
 
 /// Subscribe to all characteristics, and provide channels to access the data
@@ -283,7 +288,7 @@ async fn subscribe_to_characteristics(
 
     // Handle notifications on separate task
     // TODO: should we do something with the handle?
-    let notifications_handle = tokio::spawn(handle_notifications(
+    let _notifications_handle = tokio::spawn(handle_notifications(
         notifications,
         indoor_tx.clone(),
         training_tx.clone(),
@@ -352,20 +357,25 @@ async fn handle_notifications(
     while let Some(data) = notifications.next().await {
         match data.uuid {
             MACHINE_STATUS => {
-                debug!("Got notification from MACHINE_STATUS: {:?}", data.value);
+                trace!("Got notification from MACHINE_STATUS: {:?}", data.value);
+                handle_machine_status_notification(&data.value);
+
+                // TODO:
+                // let _ = machine_tx.send(parsed_data);
             }
             INDOOR_BIKE_DATA => {
-                debug!("Got notification from INDOOR_BIKE_DATA: {:?}", data.value);
+                trace!("Got notification from INDOOR_BIKE_DATA: {:?}", data.value);
                 let parsed_data = handle_bike_data_notification(&data.value);
 
                 // Send may fail, if there is no receiver
                 let _ = indoor_tx.send(parsed_data);
             }
             TRAINING_STATUS => {
-                debug!("Got notification from TRAINING_STATUS: {:?}", data.value);
+                trace!("Got notification from TRAINING_STATUS: {:?}", data.value);
             }
             CONTROL_POINT => {
-                debug!("Got notification from CONTROL_POINT: {:?}", data.value);
+                trace!("Got notification from CONTROL_POINT: {:?}", data.value);
+                handle_control_point_notification(&data.value);
             }
             _ => {
                 warn!(
@@ -377,41 +387,25 @@ async fn handle_notifications(
     }
 }
 
-/// BikeData has different fields present, depending on flag field
-#[derive(Debug, Default, Clone)]
-pub struct BikeData {
-    inst_speed: Option<f64>,
-    avg_speed: Option<f64>,
-    inst_cadence: Option<f64>,
-    avg_cadence: Option<f64>,
-    tot_distance: Option<u32>,
-    resistance_lvl: Option<f64>,
-    inst_power: Option<i16>,
-    avg_power: Option<i16>,
-    elapsed_time: Option<u16>,
-    remaining_time: Option<u16>,
+fn handle_control_point_notification(raw_data: &[u8]) {
+    let op_code = raw_data[0];
+    assert_eq!(op_code, 0x80);
+
+    let request_op_code = ControlPoint::from_u8(raw_data[1]).unwrap();
+    let result_code = ControlPointResult::from_u8(raw_data[2]).unwrap();
+
+    debug!("Control Point Notification for request {request_op_code:?} result {result_code:?}");
+}
+
+fn handle_machine_status_notification(raw_data: &[u8]) {
+    let op_code = raw_data[0];
+
+    let parsed_op_code = MachineStatusOpCode::from_u8(op_code).unwrap();
+    debug!("Got Machine Status Notification with opcode {parsed_op_code:?}");
 }
 
 /// Handle raw stream from notification into BikeData
 fn handle_bike_data_notification(raw_data: &[u8]) -> BikeData {
-    #[derive(Debug, FromPrimitive)]
-    enum Flags {
-        MoreData = 1 << 0, // a.k.a instantaneous speed, this is f*kd up
-        AvgSpeed = 1 << 1,
-        InstCadence = 1 << 2,
-        AvgCadence = 1 << 3,
-        TotDistance = 1 << 4,
-        ResistanceLvl = 1 << 5,
-        InstPower = 1 << 6,
-        AvgPower = 1 << 7,
-        ExpendedEnergy = 1 << 8,
-        HR = 1 << 9,
-        MetabolicEquivalent = 1 << 10,
-        ElapsedTime = 1 << 11,
-        RemainingTime = 1 << 12,
-    }
-    const FLAGS_LEN: u16 = 13;
-
     let flags = LittleEndian::read_u16(&raw_data[0..]);
 
     // Cursor pointing current position in raw_data
@@ -422,7 +416,7 @@ fn handle_bike_data_notification(raw_data: &[u8]) -> BikeData {
 
     // For inst speed logic is reversed, additionally this field contains 2 different things
     // depending on value.
-    if flags & Flags::MoreData as u16 == 1 {
+    if flags & BikeDataFlags::MoreData as u16 == 1 {
         // If set to 1, means there will be more data to come
         // Happens when data does not fit into UTU
         unimplemented!("More Data scenario is not yet implemented")
@@ -437,7 +431,7 @@ fn handle_bike_data_notification(raw_data: &[u8]) -> BikeData {
     }
 
     // Check flags bit, if set then there is a value in the data stream corresponding to that field
-    for i in 1..FLAGS_LEN {
+    for i in 1..BIKE_DATA_FLAGS_LEN {
         let field_present: u16 = flags & (1 << i);
 
         if field_present == 0 {
@@ -445,75 +439,77 @@ fn handle_bike_data_notification(raw_data: &[u8]) -> BikeData {
             continue;
         }
 
-        match Flags::from_u16(field_present).unwrap() {
-            Flags::AvgSpeed => {
+        match BikeDataFlags::from_u16(field_present).unwrap() {
+            BikeDataFlags::AvgSpeed => {
                 let raw = LittleEndian::read_u16(&raw_data[cursor..]);
                 cursor += 2;
 
                 let conv = ScalarType::new().with_multiplier(1).with_dec_exp(-2);
                 bike_data.avg_speed = Some(conv.to_scalar(raw));
             }
-            Flags::InstCadence => {
+            BikeDataFlags::InstCadence => {
                 let raw = LittleEndian::read_u16(&raw_data[cursor..]);
                 cursor += 2;
 
                 let conv = ScalarType::new().with_multiplier(1).with_dec_exp(-1);
                 bike_data.inst_cadence = Some(conv.to_scalar(raw));
             }
-            Flags::AvgCadence => {
+            BikeDataFlags::AvgCadence => {
                 let raw = LittleEndian::read_u16(&raw_data[cursor..]);
                 cursor += 2;
 
                 let conv = ScalarType::new().with_multiplier(1).with_dec_exp(-1);
                 bike_data.avg_cadence = Some(conv.to_scalar(raw));
             }
-            Flags::TotDistance => {
+            BikeDataFlags::TotDistance => {
                 let raw = LittleEndian::read_u24(&raw_data[cursor..]);
                 cursor += 3;
 
                 bike_data.tot_distance = Some(raw);
             }
-            Flags::ResistanceLvl => {
+            BikeDataFlags::ResistanceLvl => {
                 let raw = raw_data[cursor];
                 cursor += 1;
 
                 let conv = ScalarType::new().with_multiplier(1).with_dec_exp(1);
                 bike_data.resistance_lvl = Some(conv.to_scalar(raw));
             }
-            Flags::InstPower => {
+            BikeDataFlags::InstPower => {
                 let raw = LittleEndian::read_i16(&raw_data[cursor..]);
                 cursor += 2;
 
                 bike_data.inst_power = Some(raw);
             }
-            Flags::AvgPower => {
+            BikeDataFlags::AvgPower => {
                 let raw = LittleEndian::read_i16(&raw_data[cursor..]);
                 cursor += 2;
 
                 bike_data.avg_power = Some(raw);
             }
-            Flags::ElapsedTime => {
+            BikeDataFlags::ElapsedTime => {
                 let raw = LittleEndian::read_u16(&raw_data[cursor..]);
                 cursor += 2;
 
                 bike_data.elapsed_time = Some(raw);
             }
-            Flags::RemainingTime => {
+            BikeDataFlags::RemainingTime => {
                 let raw = LittleEndian::read_u16(&raw_data[cursor..]);
                 cursor += 2;
 
                 bike_data.remaining_time = Some(raw);
             }
-            Flags::MoreData => unreachable!(),
-            Flags::MetabolicEquivalent => {
+            BikeDataFlags::MoreData => unreachable!(),
+            BikeDataFlags::MetabolicEquivalent => {
                 unimplemented!("parsing MetabolicEquivalent data not implemented")
             }
-            Flags::HR => unimplemented!("parsing HR data not implemented"),
-            Flags::ExpendedEnergy => unimplemented!("parsing ExpendedEnergy data not implemented"),
+            BikeDataFlags::HR => unimplemented!("parsing HR data not implemented"),
+            BikeDataFlags::ExpendedEnergy => {
+                unimplemented!("parsing ExpendedEnergy data not implemented")
+            }
         };
     }
 
-    debug!("Parsed bike data {bike_data:#?}");
+    trace!("Parsed bike data {bike_data:#?}");
     bike_data
 }
 

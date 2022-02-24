@@ -4,7 +4,7 @@ extern crate num_derive;
 use crate::ble_client::BleClient;
 use anyhow::Result;
 use cli::{control_cli, CLIMessages};
-use fitness_machine_client::IndoorBikeFitnessMachine;
+use indoor_bike_client::IndoorBikeFitnessMachine;
 use futures::StreamExt;
 use signal_hook::consts::signal::*;
 use signal_hook_async_std::Signals;
@@ -13,8 +13,9 @@ use tokio::{sync::mpsc::Receiver, task};
 mod bk_gatts_service;
 mod ble_client;
 mod cli;
-mod fitness_machine_client;
+mod indoor_bike_client;
 mod scalar_converter;
+mod indoor_bike_data_defs;
 
 #[macro_use]
 extern crate log;
@@ -48,13 +49,19 @@ async fn run(fit: &mut IndoorBikeFitnessMachine, mut rx: Receiver<CLIMessages>) 
     // TODO: Use select?
     // let _status_notifications = fit.subscribe_for_status_notifications();
 
-    while let Some(m) = rx.recv().await {
-        match m {
+    while let Some(message) = rx.recv().await {
+        match message {
             CLIMessages::Exit => {
                 rx.close();
                 break;
             }
-            _ => unimplemented!(),
+            CLIMessages::SetResistance { resistance } => {
+                fit.set_resistance(resistance).await?;
+            },
+            CLIMessages::SetTargetPower { power } => {
+                fit.set_power(power).await?;
+            },
+            // _ => unimplemented!(),
         }
     }
 
