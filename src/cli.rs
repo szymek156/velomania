@@ -8,12 +8,12 @@ use tokio::sync::mpsc::Sender;
 #[derive(Parser)]
 struct Cli {
     #[clap(subcommand)]
-    command: CLIMessages,
+    command: UserCommands,
 }
 
 /// Things possible to control from the CLI
 #[derive(Debug, Subcommand)]
-pub enum CLIMessages {
+pub enum UserCommands {
     // Use clap to model possible commands
     // User can type help to get description, for free!
 
@@ -25,7 +25,7 @@ pub enum CLIMessages {
 }
 
 /// Read stdin and use clap to parse user input to the CLIMessages enum
-pub async fn control_cli(tx: Sender<CLIMessages>) {
+pub async fn control_cli(tx: Sender<UserCommands>) {
     // It's not recommended to handle user input using async.
     // Spawn dedicated thread instead.
 
@@ -37,7 +37,7 @@ pub async fn control_cli(tx: Sender<CLIMessages>) {
 
             if let Err(e) = res {
                 error!("Got error while reading stdin {e}, exiting");
-                tx.blocking_send(CLIMessages::Exit).unwrap();
+                tx.blocking_send(UserCommands::Exit).unwrap();
                 break;
             }
 
@@ -48,7 +48,7 @@ pub async fn control_cli(tx: Sender<CLIMessages>) {
             match matches {
                 Ok(matches) => {
                     // Matches are valid, so it's safe to unwrap
-                    let cli = CLIMessages::from_arg_matches(&matches).unwrap();
+                    let cli = UserCommands::from_arg_matches(&matches).unwrap();
 
                     tx.blocking_send(cli).unwrap();
                 }

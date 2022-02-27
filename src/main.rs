@@ -4,7 +4,7 @@ use anyhow::anyhow;
 
 use crate::ble_client::BleClient;
 use anyhow::Result;
-use cli::{control_cli, CLIMessages};
+use cli::{control_cli, UserCommands};
 use futures::StreamExt;
 use indoor_bike_client::IndoorBikeFitnessMachine;
 use indoor_bike_data_defs::{ControlPointOpCode, ControlPointResult};
@@ -39,12 +39,13 @@ async fn main() -> Result<()> {
     if res.is_err() {
         error!("Got error {}", res.as_ref().unwrap_err());
     }
+
     fit.disconnect().await?;
 
     res
 }
 
-async fn run(fit: &mut IndoorBikeFitnessMachine, mut rx: Receiver<CLIMessages>) -> Result<()> {
+async fn run(fit: &mut IndoorBikeFitnessMachine, mut rx: Receiver<UserCommands>) -> Result<()> {
     fit.dump_service_info().await?;
     fit.get_features().await?;
 
@@ -55,14 +56,14 @@ async fn run(fit: &mut IndoorBikeFitnessMachine, mut rx: Receiver<CLIMessages>) 
 
     while let Some(message) = rx.recv().await {
         match message {
-            CLIMessages::Exit => {
+            UserCommands::Exit => {
                 rx.close();
                 break;
             }
-            CLIMessages::SetResistance { resistance } => {
+            UserCommands::SetResistance { resistance } => {
                 fit.set_resistance(resistance).await?;
             }
-            CLIMessages::SetTargetPower { power } => {
+            UserCommands::SetTargetPower { power } => {
                 fit.set_power(power).await?;
             }
         }
@@ -82,7 +83,7 @@ async fn run(fit: &mut IndoorBikeFitnessMachine, mut rx: Receiver<CLIMessages>) 
     Ok(())
 }
 
-fn register_signal_handler(tx: tokio::sync::mpsc::Sender<CLIMessages>) -> () {
+fn register_signal_handler(tx: tokio::sync::mpsc::Sender<UserCommands>) -> () {
     task::spawn(async move {
         info!("Signal handler waits for events");
 
@@ -91,7 +92,7 @@ fn register_signal_handler(tx: tokio::sync::mpsc::Sender<CLIMessages>) -> () {
         match signals.next().await {
             Some(sig) => {
                 warn!("Got signal {sig}");
-                tx.send(CLIMessages::Exit).await.unwrap();
+                tx.send(UserCommands::Exit).await.unwrap();
             }
             None => unreachable!("Signals stream closed?"),
         }
