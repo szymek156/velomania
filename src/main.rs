@@ -1,13 +1,16 @@
 #[macro_use]
 extern crate num_derive;
-use anyhow::anyhow;
+use std::path::{Path, PathBuf};
+
+use structopt::StructOpt;
+use zwo_workout::ZwoWorkout;
 
 use crate::ble_client::BleClient;
 use anyhow::Result;
 use cli::{control_cli, UserCommands};
 use futures::StreamExt;
 use indoor_bike_client::IndoorBikeFitnessMachine;
-use indoor_bike_data_defs::{ControlPointOpCode, ControlPointResult};
+use indoor_bike_data_defs::ControlPointResult;
 use signal_hook::consts::signal::*;
 use signal_hook_async_std::Signals;
 use tokio::{sync::mpsc::Receiver, task};
@@ -18,31 +21,58 @@ mod cli;
 mod indoor_bike_client;
 mod indoor_bike_data_defs;
 mod scalar_converter;
+mod zwo_workout;
 
 #[macro_use]
 extern crate log;
+
+#[derive(StructOpt)]
+struct Args {
+    /// Workout .zwo file
+    #[structopt(short, long, parse(from_os_str))]
+    workout: PathBuf,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
 
+    let opt = Args::from_args();
+
     let (tx, rx) = tokio::sync::mpsc::channel(10);
 
-    control_cli(tx.clone()).await;
+    control_cli(tx.clone());
 
     register_signal_handler(tx.clone());
 
-    let mut fit = connect_fot_fit().await?;
+    // let mut fit = connect_to_fit().await?;
 
-    let res = run(&mut fit, rx).await;
+    start_workout(tx.clone(), opt.workout.as_path()).await?;
 
-    if res.is_err() {
-        error!("Got error {}", res.as_ref().unwrap_err());
-    }
+    let res = Ok(());
 
-    fit.disconnect().await?;
+    // let res = run(&mut fit, rx).await;
+
+    // if res.is_err() {
+    //     error!("Got error {}", res.as_ref().unwrap_err());
+    // }
+
+    // fit.disconnect().await?;
 
     res
+}
+
+async fn start_workout(tx: tokio::sync::mpsc::Sender<UserCommands>, workout: &Path) -> Result<()> {
+    let mut workout = ZwoWorkout::new(&workout).await?;
+
+    tokio::spawn(async move {
+        while let Some(command) = workout.next().await {
+            // TODO: unwrap
+            tx.send(command).await.unwrap();
+        }
+    });
+
+    Ok(())
 }
 
 async fn run(fit: &mut IndoorBikeFitnessMachine, mut rx: Receiver<UserCommands>) -> Result<()> {
@@ -99,7 +129,7 @@ fn register_signal_handler(tx: tokio::sync::mpsc::Sender<UserCommands>) -> () {
     });
 }
 
-async fn connect_fot_fit() -> Result<IndoorBikeFitnessMachine> {
+async fn connect_to_fit() -> Result<IndoorBikeFitnessMachine> {
     let ble = BleClient::new().await;
     // ble.connect_to_bc().await.unwrap();
 

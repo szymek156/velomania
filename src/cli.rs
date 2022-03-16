@@ -25,7 +25,7 @@ pub enum UserCommands {
 }
 
 /// Read stdin and use clap to parse user input to the CLIMessages enum
-pub async fn control_cli(tx: Sender<UserCommands>) {
+pub fn control_cli(tx: Sender<UserCommands>) {
     // It's not recommended to handle user input using async.
     // Spawn dedicated thread instead.
 
