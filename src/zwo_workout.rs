@@ -1,20 +1,29 @@
-use std::path::Path;
+use std::{collections::VecDeque, path::Path, task::Poll, time::Duration};
 
 use anyhow::{Context, Result};
-use futures::Stream;
+use futures::{
+    future::{poll_fn, Pending},
+    Future, FutureExt, Stream,
+};
 
 use serde::{Deserialize, Serialize};
-use serde_xml_rs::{from_str, to_string};
-use tokio::io::AsyncReadExt;
+use serde_xml_rs::from_str;
+use tokio::{
+    io::AsyncReadExt,
+    pin,
+    time::{self, Instant, Interval},
+};
 
 use crate::cli::UserCommands;
 
 pub struct ZwoWorkout {
     workout: workout_file,
+    pending: tokio::time::Interval,
 }
 
 // XML schema definition
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[allow(non_snake_case, non_camel_case_types)]
 struct workout_file {
     author: String,
     name: String,
@@ -26,7 +35,7 @@ struct workout_file {
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct Workout {
     #[serde(rename = "$value")]
-    workouts: Vec<WorkoutTypes>,
+    workouts: VecDeque<WorkoutTypes>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -38,6 +47,7 @@ enum WorkoutTypes {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[allow(non_snake_case)]
 struct Warmup {
     Duration: usize,
     PowerLow: f64,
@@ -45,6 +55,7 @@ struct Warmup {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[allow(non_snake_case)]
 struct Cooldown {
     Duration: usize,
     PowerLow: f64,
@@ -52,12 +63,14 @@ struct Cooldown {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[allow(non_snake_case)]
 struct SteadyState {
     Duration: usize,
     Power: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[allow(non_snake_case)]
 struct IntervalsT {
     Repeat: usize,
     OnDuration: usize,
@@ -78,9 +91,12 @@ impl ZwoWorkout {
 
         let workout = from_str(&content).context("Parsing xml string to Workouts struct failed")?;
 
-        info!("Parsed xml {workout:#?}");
+        trace!("Parsed xml {workout:#?}");
 
-        Ok(ZwoWorkout { workout })
+        Ok(ZwoWorkout {
+            workout,
+            pending: time::interval(Duration::from_millis(100)),
+        })
     }
 }
 
@@ -88,85 +104,42 @@ impl Stream for ZwoWorkout {
     type Item = UserCommands;
 
     fn poll_next(
-        self: std::pin::Pin<&mut Self>,
+        mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        todo!()
-    }
-}
+        // TODO: WTF why this works
+        // while let Poll::Pending = self.pending.poll_tick(cx) {}
+        // let timer_res: Poll<Instant> = Poll::Pending; //self.pending.poll_tick(cx);
 
-#[test]
-fn parse_xml_test() {
-    #[derive(Debug, Serialize, Deserialize, PartialEq)]
-    struct PlateAppearance {
-        #[serde(rename = "$value")]
-        events: Vec<Event>,
-    }
+        let timer_res = self.pending.poll_tick(cx);
 
-    #[derive(Debug, Serialize, Deserialize, PartialEq)]
-    #[serde(rename_all = "kebab-case")]
-    enum Event {
-        Pitch(Pitch),
-        Runner(Runner),
-    }
+        info!("Timer res {timer_res:?}");
 
-    #[derive(Debug, Serialize, Deserialize, PartialEq)]
-    struct Pitch {
-        speed: u32,
-        r#type: PitchType,
-        outcome: PitchOutcome,
-    }
+        if let Poll::Ready(_) = timer_res {
+            debug!("Timer fired!");
+            let next_workout = match self.as_mut().workout.workout.workouts.pop_front() {
+                Some(workout) => {
+                    debug!("Workout in the stream {workout:?}");
 
-    #[derive(Debug, Serialize, Deserialize, PartialEq)]
-    enum PitchType {
-        FourSeam,
-        TwoSeam,
-        Changeup,
-        Cutter,
-        Curve,
-        Slider,
-        Knuckle,
-        Pitchout,
+                    self.pending = time::interval(Duration::from_secs(1));
+
+                    // First tick fires up immediately, starting from this instant next interval is waited
+                    // info!("new {:?}", self.pending.poll_tick(cx));
+
+                    Poll::Ready(Some(UserCommands::SetTargetPower { power: 100 }))
+                }
+                None => Poll::Ready(None),
+            };
+
+            debug!("debug: return ready");
+            return next_workout;
+        } else {
+            debug!("debug: return pending");
+            return Poll::Pending;
+        }
     }
 
-    #[derive(Debug, Serialize, Deserialize, PartialEq)]
-    enum PitchOutcome {
-        Ball,
-        Strike,
-        Hit,
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, Some(self.workout.workout.workouts.len()))
     }
-
-    #[derive(Debug, Serialize, Deserialize, PartialEq)]
-    struct Runner {
-        from: Base,
-        to: Option<Base>,
-        outcome: RunnerOutcome,
-    }
-
-    #[derive(Debug, Serialize, Deserialize, PartialEq)]
-    enum Base {
-        First,
-        Second,
-        Third,
-        Home,
-    }
-    #[derive(Debug, Serialize, Deserialize, PartialEq)]
-    enum RunnerOutcome {
-        Steal,
-        Caught,
-        PickOff,
-    }
-
-    let document = r#"
-        <plate-appearance>
-          <pitch speed="95" type="FourSeam" outcome="Ball" />
-          <pitch speed="91" type="FourSeam" outcome="Strike" />
-          <pitch speed="85" type="Changeup" outcome="Ball" />
-          <runner from="First" to="Second" outcome="Steal" />
-          <pitch speed="89" type="Slider" outcome="Strike" />
-          <pitch speed="88" type="Curve" outcome="Hit" />
-        </plate-appearance>"#;
-    let plate_appearance: PlateAppearance = from_str(document).unwrap();
-
-    println!("PArsed {plate_appearance:?}");
 }

@@ -1,6 +1,9 @@
 #[macro_use]
 extern crate num_derive;
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    thread::JoinHandle,
+};
 
 use structopt::StructOpt;
 use zwo_workout::ZwoWorkout;
@@ -47,8 +50,9 @@ async fn main() -> Result<()> {
 
     // let mut fit = connect_to_fit().await?;
 
-    start_workout(tx.clone(), opt.workout.as_path()).await?;
+    let handle = start_workout(tx.clone(), opt.workout.as_path()).await?;
 
+    let _ = handle.await;
     let res = Ok(());
 
     // let res = run(&mut fit, rx).await;
@@ -62,17 +66,24 @@ async fn main() -> Result<()> {
     res
 }
 
-async fn start_workout(tx: tokio::sync::mpsc::Sender<UserCommands>, workout: &Path) -> Result<()> {
+async fn start_workout(
+    tx: tokio::sync::mpsc::Sender<UserCommands>,
+    workout: &Path,
+) -> Result<tokio::task::JoinHandle<()>> {
     let mut workout = ZwoWorkout::new(&workout).await?;
 
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
+        debug!("spawning workout stream");
+
         while let Some(command) = workout.next().await {
             // TODO: unwrap
-            tx.send(command).await.unwrap();
+            debug!("Got command from workout: {command:?}");
+
+            // tx.send(command).await.unwrap();
         }
     });
 
-    Ok(())
+    Ok(handle)
 }
 
 async fn run(fit: &mut IndoorBikeFitnessMachine, mut rx: Receiver<UserCommands>) -> Result<()> {
