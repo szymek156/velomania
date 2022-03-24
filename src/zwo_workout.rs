@@ -98,6 +98,35 @@ impl ZwoWorkout {
             pending: None,
         })
     }
+
+    fn get_next_workout(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Option<UserCommands>>{
+        debug!("Timer fired!");
+        let next_workout = match self.workout.workout.workouts.pop_front() {
+            Some(workout) => {
+                debug!("Workout in the stream {workout:?}");
+
+                let interval = Duration::from_millis(100);
+
+                let waker = cx.waker().clone();
+                // TODO: there should be a way to use time::interval().poll_tick
+                let handle = tokio::spawn(async move {
+                    time::sleep(interval).await;
+                    waker.wake();
+                });
+
+                self.pending = Some(handle);
+
+                // First tick fires up immediately, starting from this instant next interval is waited
+                // info!("new {:?}", self.pending.poll_tick(cx));
+
+                Poll::Ready(Some(UserCommands::SetTargetPower { power: 100 }))
+            }
+            None => Poll::Ready(None),
+        };
+
+        debug!("debug: return ready");
+        return next_workout;
+    }
 }
 
 impl Stream for ZwoWorkout {
@@ -108,68 +137,54 @@ impl Stream for ZwoWorkout {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
 
+        // Pass this and cx as arguments, otherwise they will be part of the closure,
+        // making BC mad
+        // let get_next_workout = |this: &mut Self, cx: &std::task::Context| {
+        //     debug!("Timer fired!");
+        //     let next_workout = match this.workout.workout.workouts.pop_front() {
+        //         Some(workout) => {
+        //             debug!("Workout in the stream {workout:?}");
+
+        //             let interval = Duration::from_millis(100);
+
+        //             let waker = cx.waker().clone();
+        //             let handle = tokio::spawn(async move {
+        //                 let mut interval = time::interval(interval);
+        //                 interval.tick().await;
+        //                 interval.tick().await;
+        //                 waker.wake();
+        //             });
+
+        //             this.pending = Some(handle);
+
+        //             // First tick fires up immediately, starting from this instant next interval is waited
+        //             // info!("new {:?}", self.pending.poll_tick(cx));
+
+        //             Poll::Ready(Some(UserCommands::SetTargetPower { power: 100 }))
+        //         }
+        //         None => Poll::Ready(None),
+        //     };
+
+        //     debug!("debug: return ready");
+        //     return next_workout;
+        // };
+
         if let Some(handle) = self.pending.take() {
             pin!(handle);
 
             match handle.poll(cx) {
-                // Timer fired before poll_next was called on the iterator.
+                // Timer already fired before poll_next was called on the iterator.
                 // In such case return next workout immediately
                 Poll::Ready(_) => {
-                    debug!("Timer fired!");
-                    let next_workout = match self.as_mut().workout.workout.workouts.pop_front() {
-                        Some(workout) => {
-                            debug!("Workout in the stream {workout:?}");
-
-                            let interval = Duration::from_millis(100);
-
-                            let waker = cx.waker().clone();
-                            let handle = tokio::spawn(async move {
-                                let mut interval = time::interval(interval);
-                                interval.tick().await;
-                                interval.tick().await;
-                                waker.wake();
-                            });
-
-                            self.pending = Some(handle);
-
-                            // First tick fires up immediately, starting from this instant next interval is waited
-                            // info!("new {:?}", self.pending.poll_tick(cx));
-
-                            Poll::Ready(Some(UserCommands::SetTargetPower { power: 100 }))
-                        }
-                        None => Poll::Ready(None),
-                    };
-
-                    debug!("debug: return ready");
-                    return next_workout;
+                    return self.get_next_workout(cx);
                 },
                 // Previous workout should be still executed
                 Poll::Pending => return Poll::Pending,
             }
 
         } else {
-            debug!("Timer fired!");
-            let next_workout = match self.as_mut().workout.workout.workouts.pop_front() {
-                Some(workout) => {
-                    debug!("Workout in the stream {workout:?}");
-
-                    let interval = Duration::from_millis(100);
-
-                    let waker = cx.waker().clone();
-                    let handle = tokio::spawn(async move {
-                        time::sleep(interval).await;
-                        waker.wake();
-                    });
-
-                    self.pending = Some(handle);
-
-                    Poll::Ready(Some(UserCommands::SetTargetPower { power: 100 }))
-                }
-                None => Poll::Ready(None),
-            };
-
-            debug!("debug: return ready");
-            return next_workout;
+            // No workout pending, get next one
+            return self.get_next_workout(cx);
         }
     }
 
