@@ -25,6 +25,7 @@ mod indoor_bike_client;
 mod indoor_bike_data_defs;
 mod scalar_converter;
 mod zwo_workout;
+mod zwo_workout_steps;
 
 #[macro_use]
 extern crate log;
@@ -70,7 +71,7 @@ async fn start_workout(
     tx: tokio::sync::mpsc::Sender<UserCommands>,
     workout: &Path,
 ) -> Result<tokio::task::JoinHandle<()>> {
-    let mut workout = ZwoWorkout::new(&workout).await?;
+    let mut workout = ZwoWorkout::new(&workout, 150.0).await?;
 
     let handle = tokio::spawn(async move {
         debug!("spawning workout stream");

@@ -11,14 +11,20 @@ use serde_xml_rs::from_str;
 use tokio::{
     io::AsyncReadExt,
     pin,
-    time::{self, Instant, Interval, interval}, task::JoinHandle,
+    task::JoinHandle,
+    time::{self},
 };
 
-use crate::cli::UserCommands;
+use crate::{
+    cli::UserCommands,
+    zwo_workout_steps::{PowerDuration, WorkoutSteps},
+};
 
 pub struct ZwoWorkout {
     workout: workout_file,
     pending: Option<JoinHandle<()>>,
+    current_workout: WorkoutSteps,
+    ftp_base: f64,
 }
 
 // XML schema definition
@@ -35,52 +41,11 @@ struct workout_file {
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct Workout {
     #[serde(rename = "$value")]
-    workouts: VecDeque<WorkoutTypes>,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-enum WorkoutTypes {
-    Warmup(Warmup),
-    SteadyState(SteadyState),
-    Cooldown(Cooldown),
-    IntervalsT(IntervalsT),
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-#[allow(non_snake_case)]
-struct Warmup {
-    Duration: usize,
-    PowerLow: f64,
-    PowerHigh: f64,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-#[allow(non_snake_case)]
-struct Cooldown {
-    Duration: usize,
-    PowerLow: f64,
-    PowerHigh: f64,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-#[allow(non_snake_case)]
-struct SteadyState {
-    Duration: usize,
-    Power: f64,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-#[allow(non_snake_case)]
-struct IntervalsT {
-    Repeat: usize,
-    OnDuration: usize,
-    OffDuration: usize,
-    OnPower: f64,
-    OffPower: f64,
+    workouts: VecDeque<WorkoutSteps>,
 }
 
 impl ZwoWorkout {
-    pub(crate) async fn new(workout: &Path) -> Result<Self> {
+    pub(crate) async fn new(workout: &Path, ftp_base: f64) -> Result<Self> {
         let mut file = tokio::fs::File::open(workout).await?;
 
         let mut content = String::new();
@@ -89,43 +54,63 @@ impl ZwoWorkout {
             .await
             .context("Reading xml to String failed")?;
 
-        let workout = from_str(&content).context("Parsing xml string to Workouts struct failed")?;
-
+        let mut workout: workout_file =
+            from_str(&content).context("Parsing xml string to Workouts struct failed")?;
         trace!("Parsed xml {workout:#?}");
+
+        let current_workout = workout
+            .workout
+            .workouts
+            .pop_front()
+            .expect("Workout does not contain any workout steps");
 
         Ok(ZwoWorkout {
             workout,
             pending: None,
+            current_workout,
+            ftp_base,
         })
     }
 
-    fn get_next_workout(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Option<UserCommands>>{
-        debug!("Timer fired!");
-        let next_workout = match self.workout.workout.workouts.pop_front() {
-            Some(workout) => {
-                debug!("Workout in the stream {workout:?}");
+    fn advance_workout(&mut self) -> Option<PowerDuration> {
+        if let Some(next_step) = self.current_workout.advance() {
+            return Some(next_step);
+        }
 
-                let interval = Duration::from_millis(100);
+        // Current step exhausted, get next one
+        let next = self.workout.workout.workouts.pop_front();
 
-                let waker = cx.waker().clone();
-                // TODO: there should be a way to use time::interval().poll_tick
-                let handle = tokio::spawn(async move {
-                    time::sleep(interval).await;
-                    waker.wake();
-                });
+        // Nothing left
+        if next.is_none() {
+            // TODO: get rid off Poll enum from here
+            return None;
+        }
 
-                self.pending = Some(handle);
+        // Start with next workout
+        self.current_workout = next.unwrap();
 
-                // First tick fires up immediately, starting from this instant next interval is waited
-                // info!("new {:?}", self.pending.poll_tick(cx));
+        let next_step = self
+            .current_workout
+            .advance()
+            .expect("Cannot advance fresh workout step");
 
-                Poll::Ready(Some(UserCommands::SetTargetPower { power: 100 }))
-            }
-            None => Poll::Ready(None),
-        };
+        return Some(next_step);
+    }
 
-        debug!("debug: return ready");
-        return next_workout;
+    fn setup_timer(&mut self, duration: Duration, cx: &mut std::task::Context<'_>) {
+        // Wake the stream when timer fires up - then return next workout
+        let waker = cx.waker().clone();
+        // TODO: there should be a way to use time::interval().poll_tick
+        let handle = tokio::spawn(async move {
+            time::sleep(duration).await;
+            waker.wake();
+        });
+
+        self.pending = Some(handle);
+    }
+
+    fn get_power(&self, power_level: f64) -> i16 {
+        (self.ftp_base * power_level).round() as i16
     }
 }
 
@@ -136,39 +121,6 @@ impl Stream for ZwoWorkout {
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-
-        // Pass this and cx as arguments, otherwise they will be part of the closure,
-        // making BC mad
-        // let get_next_workout = |this: &mut Self, cx: &std::task::Context| {
-        //     debug!("Timer fired!");
-        //     let next_workout = match this.workout.workout.workouts.pop_front() {
-        //         Some(workout) => {
-        //             debug!("Workout in the stream {workout:?}");
-
-        //             let interval = Duration::from_millis(100);
-
-        //             let waker = cx.waker().clone();
-        //             let handle = tokio::spawn(async move {
-        //                 let mut interval = time::interval(interval);
-        //                 interval.tick().await;
-        //                 interval.tick().await;
-        //                 waker.wake();
-        //             });
-
-        //             this.pending = Some(handle);
-
-        //             // First tick fires up immediately, starting from this instant next interval is waited
-        //             // info!("new {:?}", self.pending.poll_tick(cx));
-
-        //             Poll::Ready(Some(UserCommands::SetTargetPower { power: 100 }))
-        //         }
-        //         None => Poll::Ready(None),
-        //     };
-
-        //     debug!("debug: return ready");
-        //     return next_workout;
-        // };
-
         if let Some(handle) = self.pending.take() {
             pin!(handle);
 
@@ -176,15 +128,44 @@ impl Stream for ZwoWorkout {
                 // Timer already fired before poll_next was called on the iterator.
                 // In such case return next workout immediately
                 Poll::Ready(_) => {
-                    return self.get_next_workout(cx);
-                },
+                    warn!("Returning stale workout data!");
+                    // TODO: repetition of the code below
+                    match self.advance_workout() {
+                        Some(PowerDuration {
+                            duration,
+                            power_level,
+                        }) => {
+                            self.setup_timer(duration, cx);
+
+                            return Poll::Ready(Some(UserCommands::SetTargetPower {
+                                power: self.get_power(power_level),
+                            }));
+                        }
+
+                        // Whole workout exhausted
+                        None => return Poll::Ready(None),
+                    }
+                }
                 // Previous workout should be still executed
                 Poll::Pending => return Poll::Pending,
             }
-
         } else {
             // No workout pending, get next one
-            return self.get_next_workout(cx);
+            match self.advance_workout() {
+                Some(PowerDuration {
+                    duration,
+                    power_level,
+                }) => {
+                    self.setup_timer(duration, cx);
+
+                    return Poll::Ready(Some(UserCommands::SetTargetPower {
+                        power: self.get_power(power_level),
+                    }));
+                }
+
+                // Whole workout exhausted
+                None => return Poll::Ready(None),
+            }
         }
     }
 
