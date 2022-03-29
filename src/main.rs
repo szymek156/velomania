@@ -35,6 +35,9 @@ struct Args {
     /// Workout .zwo file
     #[structopt(short, long, parse(from_os_str))]
     workout: PathBuf,
+
+    #[structopt(short, long)]
+    ftp_base: f64,
 }
 
 #[tokio::main]
@@ -51,7 +54,7 @@ async fn main() -> Result<()> {
 
     // let mut fit = connect_to_fit().await?;
 
-    let handle = start_workout(tx.clone(), opt.workout.as_path()).await?;
+    let handle = start_workout(tx.clone(), opt.workout.as_path(), opt.ftp_base).await?;
 
     let _ = handle.await;
     let res = Ok(());
@@ -70,8 +73,9 @@ async fn main() -> Result<()> {
 async fn start_workout(
     tx: tokio::sync::mpsc::Sender<UserCommands>,
     workout: &Path,
+    ftp_base: f64,
 ) -> Result<tokio::task::JoinHandle<()>> {
-    let mut workout = ZwoWorkout::new(&workout, 150.0).await?;
+    let mut workout = ZwoWorkout::new(&workout, ftp_base).await?;
 
     let handle = tokio::spawn(async move {
         debug!("spawning workout stream");

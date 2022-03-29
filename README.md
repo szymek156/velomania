@@ -5,9 +5,11 @@ Under heavy development!
 # OS Support
 Currently tested only on Ubuntu
 
+# ZWO
+[ZWO file reference](https://github.com/h4l/zwift-workout-file-reference/blob/master/zwift_workout_file_tag_reference.md)
 # TODO:
 [ ] (doing) Support BLE fitness machine indoor trainer
-
+[*] support for majority of ZWO files
 [ ] Create a mock for ble client/peripheral
 
 [ ] Use tui-rs

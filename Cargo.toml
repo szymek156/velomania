@@ -23,3 +23,6 @@ byteorder = "1.4.3"
 num-traits = "0.2.14"
 num-derive = "0.3.3"
 egui = "0.17.0"
+
+[dev-dependencies]
+walkdir = "2.3.2"

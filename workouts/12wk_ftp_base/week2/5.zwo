@@ -1,0 +1,24 @@
+<workout_file>
+    <author>Marco Pinotti</author>
+    <name>Day 5 - Optional</name>
+    <description>Optional</description>
+    <sportType>bike</sportType>
+    <tags>
+    </tags>
+    <workout>
+        <SteadyState Duration="300" Power="0.52"/>
+        <SteadyState Duration="60" Power="0.73"/>
+        <SteadyState Duration="300" Power="0.52"/>
+        <SteadyState Duration="60" Power="0.73"/>
+        <SteadyState Duration="300" Power="0.52"/>
+        <SteadyState Duration="60" Power="0.73"/>
+        <SteadyState Duration="300" Power="0.52"/>
+        <SteadyState Duration="60" Power="0.73"/>
+        <SteadyState Duration="300" Power="0.52"/>
+        <SteadyState Duration="60" Power="0.73"/>
+        <SteadyState Duration="300" Power="0.52"/>
+        <SteadyState Duration="60" Power="0.73"/>
+        <SteadyState Duration="300" Power="0.52"/>
+        <SteadyState Duration="60" Power="0.73"/>
+    </workout>
+</workout_file>
