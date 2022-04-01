@@ -12,7 +12,7 @@ struct Cli {
 }
 
 /// Things possible to control from the CLI
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommand, Clone)]
 pub enum UserCommands {
     // Use clap to model possible commands
     // User can type help to get description, for free!

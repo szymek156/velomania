@@ -10,7 +10,7 @@ use zwo_workout::ZwoWorkout;
 
 use crate::ble_client::BleClient;
 use anyhow::Result;
-use cli::{control_cli, UserCommands};
+use cli::{UserCommands};
 use futures::StreamExt;
 use indoor_bike_client::IndoorBikeFitnessMachine;
 use indoor_bike_data_defs::ControlPointResult;
@@ -26,6 +26,7 @@ mod indoor_bike_data_defs;
 mod scalar_converter;
 mod zwo_workout;
 mod zwo_workout_steps;
+mod front;
 
 #[macro_use]
 extern crate log;
@@ -44,17 +45,20 @@ struct Args {
 async fn main() -> Result<()> {
     env_logger::init();
 
+
     let opt = Args::from_args();
 
-    let (tx, rx) = tokio::sync::mpsc::channel(10);
+    let (command_tx, _rx) = tokio::sync::broadcast::channel(16);
 
-    control_cli(tx.clone());
 
-    register_signal_handler(tx.clone());
+    register_signal_handler(command_tx.clone());
+
 
     // let mut fit = connect_to_fit().await?;
 
-    let handle = start_workout(tx.clone(), opt.workout.as_path(), opt.ftp_base).await?;
+    let handle = start_workout(command_tx.clone(), opt.workout.as_path(), opt.ftp_base).await?;
+
+    front::tui::test(command_tx.subscribe()).await;
 
     let _ = handle.await;
     let res = Ok(());
@@ -71,7 +75,7 @@ async fn main() -> Result<()> {
 }
 
 async fn start_workout(
-    tx: tokio::sync::mpsc::Sender<UserCommands>,
+    tx: tokio::sync::broadcast::Sender<UserCommands>,
     workout: &Path,
     ftp_base: f64,
 ) -> Result<tokio::task::JoinHandle<()>> {
@@ -84,8 +88,10 @@ async fn start_workout(
             // TODO: unwrap
             debug!("Got command from workout: {command:?}");
 
-            // tx.send(command).await.unwrap();
+            tx.send(command).unwrap();
         }
+
+        tx.send(UserCommands::Exit).unwrap();
     });
 
     Ok(handle)
@@ -129,7 +135,7 @@ async fn run(fit: &mut IndoorBikeFitnessMachine, mut rx: Receiver<UserCommands>)
     Ok(())
 }
 
-fn register_signal_handler(tx: tokio::sync::mpsc::Sender<UserCommands>) -> () {
+fn register_signal_handler(tx: tokio::sync::broadcast::Sender<UserCommands>) -> () {
     task::spawn(async move {
         info!("Signal handler waits for events");
 
@@ -138,7 +144,7 @@ fn register_signal_handler(tx: tokio::sync::mpsc::Sender<UserCommands>) -> () {
         match signals.next().await {
             Some(sig) => {
                 warn!("Got signal {sig}");
-                tx.send(UserCommands::Exit).await.unwrap();
+                tx.send(UserCommands::Exit).unwrap();
             }
             None => unreachable!("Signals stream closed?"),
         }
