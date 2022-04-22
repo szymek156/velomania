@@ -5,28 +5,29 @@ use std::{
     thread::JoinHandle,
 };
 
+use front::tui;
 use structopt::StructOpt;
 use zwo_workout::ZwoWorkout;
 
 use crate::ble_client::BleClient;
 use anyhow::Result;
-use cli::{UserCommands};
+use cli::UserCommands;
 use futures::StreamExt;
 use indoor_bike_client::IndoorBikeFitnessMachine;
 use indoor_bike_data_defs::ControlPointResult;
 use signal_hook::consts::signal::*;
 use signal_hook_async_std::Signals;
-use tokio::{sync::mpsc::Receiver, task};
+use tokio::{sync::broadcast::Receiver, task};
 
 mod bk_gatts_service;
 mod ble_client;
 mod cli;
+mod front;
 mod indoor_bike_client;
 mod indoor_bike_data_defs;
 mod scalar_converter;
 mod zwo_workout;
 mod zwo_workout_steps;
-mod front;
 
 #[macro_use]
 extern crate log;
@@ -45,35 +46,41 @@ struct Args {
 async fn main() -> Result<()> {
     env_logger::init();
 
-
     let opt = Args::from_args();
 
-    let (command_tx, _rx) = tokio::sync::broadcast::channel(16);
-
+    let (command_tx, _command_rx) = tokio::sync::broadcast::channel(16);
 
     register_signal_handler(command_tx.clone());
 
+    let mut fit = connect_to_fit().await?;
 
-    // let mut fit = connect_to_fit().await?;
+    // Start workout task, will broadcast next steps
+    let workout_join_handle =
+        start_workout(command_tx.clone(), opt.workout.as_path(), opt.ftp_base).await?;
 
-    let handle = start_workout(command_tx.clone(), opt.workout.as_path(), opt.ftp_base).await?;
+    // Tui shows current step + data from trainer
+    let tui_join_handle = tokio::spawn(front::tui::show(
+        command_tx.subscribe(),
+        fit.subscribe_for_indoor_bike_notifications(),
+        fit.subscribe_for_training_notifications(),
+    ));
 
-    front::tui::test(command_tx.subscribe()).await;
+    let res = control_fit_machine(&mut fit, command_tx.subscribe()).await;
 
-    let _ = handle.await;
-    let res = Ok(());
+    if res.is_err() {
+        error!("Got error {}", res.as_ref().unwrap_err());
+    }
 
-    // let res = run(&mut fit, rx).await;
+    fit.disconnect().await?;
 
-    // if res.is_err() {
-    //     error!("Got error {}", res.as_ref().unwrap_err());
-    // }
+    let _ = tui_join_handle.await;
 
-    // fit.disconnect().await?;
+    workout_join_handle.abort();
 
     res
 }
 
+/// Reads ZWO file, and sends commands according to it
 async fn start_workout(
     tx: tokio::sync::broadcast::Sender<UserCommands>,
     workout: &Path,
@@ -97,7 +104,11 @@ async fn start_workout(
     Ok(handle)
 }
 
-async fn run(fit: &mut IndoorBikeFitnessMachine, mut rx: Receiver<UserCommands>) -> Result<()> {
+/// Gets the commands (may be ZWO workout, or user input), and passes them to the fitness machine
+async fn control_fit_machine(
+    fit: &mut IndoorBikeFitnessMachine,
+    mut rx: Receiver<UserCommands>,
+) -> Result<()> {
     fit.dump_service_info().await?;
     fit.get_features().await?;
 
@@ -106,10 +117,10 @@ async fn run(fit: &mut IndoorBikeFitnessMachine, mut rx: Receiver<UserCommands>)
 
     let mut cp_notifications = fit.subscribe_for_control_point_notifications();
 
-    while let Some(message) = rx.recv().await {
+    while let Ok(message) = rx.recv().await {
         match message {
             UserCommands::Exit => {
-                rx.close();
+                info!("Control task exits");
                 break;
             }
             UserCommands::SetResistance { resistance } => {
