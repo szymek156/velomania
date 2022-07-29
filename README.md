@@ -20,6 +20,8 @@ Currently tested only on Ubuntu
 
 [ ] Go WASM!
 
+[ ] Add support for walkingpad https://github.com/ph4r05/ph4-walkingpad
+
 # Docs
 - Data format of characteristics: GATT_Specification_Supplement_v5.pdf
 - Description of GATTS fitness machine profile: FTMS_v1.0.pdf
