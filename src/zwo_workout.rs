@@ -18,7 +18,7 @@ use crate::{
 };
 
 pub struct ZwoWorkout {
-    workout: WorkoutFile,
+    workout_file: WorkoutFile,
     pending: Option<JoinHandle<()>>,
     current_step: WorkoutSteps,
     ftp_base: f64,
@@ -66,7 +66,7 @@ impl ZwoWorkout {
         info!("Next step {current_step:?}");
 
         Ok(ZwoWorkout {
-            workout,
+            workout_file: workout,
             pending: None,
             current_step,
             ftp_base,
@@ -79,18 +79,13 @@ impl ZwoWorkout {
         }
 
         // Current step exhausted, get next one
-        let next = self.workout.workout.workouts.pop_front();
-
-        info!("Next step {next:?}");
-
-        // Nothing left
-        if next.is_none() {
-            // TODO: get rid off Poll enum from here
+        let Some(next ) = self.workout_file.workout.workouts.pop_front() else {
+            // Nothing left
             return None;
-        }
+        };
 
         // Start with next workout
-        self.current_step = next.unwrap();
+        self.current_step = next;
 
         let next_step = self
             .current_step
@@ -181,7 +176,7 @@ impl Stream for ZwoWorkout {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, Some(self.workout.workout.workouts.len()))
+        (0, Some(self.workout_file.workout.workouts.len()))
     }
 }
 
