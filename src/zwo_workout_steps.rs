@@ -30,27 +30,27 @@ impl WorkoutSteps {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-#[allow(non_snake_case)]
+#[serde(rename_all="PascalCase")]
 pub struct Warmup {
-    Duration: usize,
-    PowerLow: f64,
-    PowerHigh: f64,
+    duration: usize,
+    power_low: f64,
+    power_high: f64,
 }
 
 impl WorkoutStep for Warmup {
     /// Get power level lasting for one second from span [low; high)
     fn advance(&mut self) -> Option<PowerDuration> {
-        if self.Duration == 0 {
+        if self.duration == 0 {
             return None;
         }
 
-        let power_level = self.PowerLow;
+        let power_level = self.power_low;
 
-        let span = self.PowerHigh - self.PowerLow;
-        let step = span / self.Duration as f64;
+        let span = self.power_high - self.power_low;
+        let step = span / self.duration as f64;
 
-        self.Duration -= 1;
-        self.PowerLow += step;
+        self.duration -= 1;
+        self.power_low += step;
         Some(PowerDuration {
             duration: Duration::from_secs(1),
             power_level,
@@ -59,27 +59,27 @@ impl WorkoutStep for Warmup {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-#[allow(non_snake_case)]
+#[serde(rename_all="PascalCase")]
 pub struct Ramp {
-    Duration: usize,
-    PowerLow: f64,
-    PowerHigh: f64,
+    duration: usize,
+    power_low: f64,
+    power_high: f64,
 }
 
 impl WorkoutStep for Ramp {
     /// Get power level lasting for one second from span [low; high)
     fn advance(&mut self) -> Option<PowerDuration> {
-        if self.Duration == 0 {
+        if self.duration == 0 {
             return None;
         }
 
-        let power_level = self.PowerLow;
+        let power_level = self.power_low;
 
-        let span = self.PowerHigh - self.PowerLow;
-        let step = span / self.Duration as f64;
+        let span = self.power_high - self.power_low;
+        let step = span / self.duration as f64;
 
-        self.Duration -= 1;
-        self.PowerLow += step;
+        self.duration -= 1;
+        self.power_low += step;
         Some(PowerDuration {
             duration: Duration::from_secs(1),
             power_level,
@@ -88,28 +88,28 @@ impl WorkoutStep for Ramp {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-#[allow(non_snake_case)]
+#[serde(rename_all="PascalCase")]
 pub struct Cooldown {
-    Duration: usize,
-    PowerLow: f64,
-    PowerHigh: f64,
+    duration: usize,
+    power_low: f64,
+    power_high: f64,
 }
 
 impl WorkoutStep for Cooldown {
     /// Get power level lasting for one second from span [high; low)
     fn advance(&mut self) -> Option<PowerDuration> {
-        if self.Duration == 0 {
+        if self.duration == 0 {
             return None;
         }
 
-        let power_level = self.PowerLow;
+        let power_level = self.power_low;
 
         // In cool down, low keeps high value, high keeps low....
-        let span = self.PowerLow - self.PowerHigh;
-        let step = span / self.Duration as f64;
+        let span = self.power_low - self.power_high;
+        let step = span / self.duration as f64;
 
-        self.Duration -= 1;
-        self.PowerLow -= step;
+        self.duration -= 1;
+        self.power_low -= step;
         Some(PowerDuration {
             duration: Duration::from_secs(1),
             power_level,
@@ -118,37 +118,37 @@ impl WorkoutStep for Cooldown {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-#[allow(non_snake_case)]
+#[serde(rename_all="PascalCase")]
 pub struct SteadyState {
-    Duration: u64,
-    Power: f64,
+    duration: u64,
+    power: f64,
 }
 
 impl WorkoutStep for SteadyState {
     fn advance(&mut self) -> Option<PowerDuration> {
-        if self.Duration == 0 {
+        if self.duration == 0 {
             return None;
         }
 
-        let duration = Duration::from_secs(self.Duration);
+        let duration = Duration::from_secs(self.duration);
 
-        self.Duration = 0;
+        self.duration = 0;
 
         Some(PowerDuration {
             duration,
-            power_level: self.Power,
+            power_level: self.power,
         })
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-#[allow(non_snake_case)]
+#[serde(rename_all="PascalCase")]
 pub struct IntervalsT {
-    Repeat: usize,
-    OnDuration: u64,
-    OffDuration: u64,
-    OnPower: f64,
-    OffPower: f64,
+    repeat: usize,
+    on_duration: u64,
+    off_duration: u64,
+    on_power: f64,
+    off_power: f64,
 
     #[serde(skip)]
     current_step: usize,
@@ -156,20 +156,20 @@ pub struct IntervalsT {
 
 impl WorkoutStep for IntervalsT {
     fn advance(&mut self) -> Option<PowerDuration> {
-        if self.Repeat == 0 {
+        if self.repeat == 0 {
             return None;
         }
 
         let step = if self.current_step % 2 == 0 {
             Some(PowerDuration {
-                duration: Duration::from_secs(self.OnDuration),
-                power_level: self.OnPower,
+                duration: Duration::from_secs(self.on_duration),
+                power_level: self.on_power,
             })
         } else {
-            self.Repeat -= 1;
+            self.repeat -= 1;
             Some(PowerDuration {
-                duration: Duration::from_secs(self.OffDuration),
-                power_level: self.OffPower,
+                duration: Duration::from_secs(self.off_duration),
+                power_level: self.off_power,
             })
         };
 
@@ -180,21 +180,21 @@ impl WorkoutStep for IntervalsT {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-#[allow(non_snake_case)]
+#[serde(rename_all="PascalCase")]
 pub struct FreeRide {
-    Duration: u64,
-    FlatRoad: f64,
+    duration: u64,
+    flat_road: f64,
 }
 
 impl WorkoutStep for FreeRide {
     fn advance(&mut self) -> Option<PowerDuration> {
-        if self.Duration == 0 {
+        if self.duration == 0 {
             return None;
         }
 
-        let duration = Duration::from_secs(self.Duration);
+        let duration = Duration::from_secs(self.duration);
 
-        self.Duration = 0;
+        self.duration = 0;
 
         Some(PowerDuration {
             duration,
@@ -219,9 +219,9 @@ mod tests {
     fn warmup_works() {
         // Of course implementation suffers because of the rounding errors
         let mut w = Warmup {
-            Duration: 4,
-            PowerLow: 0.0,
-            PowerHigh: 100.0,
+            duration: 4,
+            power_low: 0.0,
+            power_high: 100.0,
         };
 
         assert_eq!(
@@ -261,9 +261,9 @@ mod tests {
     fn ramp_works() {
         // Of course implementation suffers because of the rounding errors
         let mut w = Ramp {
-            Duration: 4,
-            PowerLow: 0.0,
-            PowerHigh: 100.0,
+            duration: 4,
+            power_low: 0.0,
+            power_high: 100.0,
         };
 
         assert_eq!(
@@ -303,9 +303,9 @@ mod tests {
     fn cooldown_works() {
         // Of course implementation suffers because of the rounding errors
         let mut w = Cooldown {
-            Duration: 4,
-            PowerLow: 100.0,
-            PowerHigh: 0.0,
+            duration: 4,
+            power_low: 100.0,
+            power_high: 0.0,
         };
 
         assert_eq!(
@@ -345,8 +345,8 @@ mod tests {
     fn steady_works() {
         // Of course implementation suffers because of the rounding errors
         let mut w = SteadyState {
-            Duration: 4,
-            Power: 1.23,
+            duration: 4,
+            power: 1.23,
         };
 
         assert_eq!(
@@ -364,8 +364,8 @@ mod tests {
     fn free_ride_works() {
         // Of course implementation suffers because of the rounding errors
         let mut w = FreeRide {
-            Duration: 4,
-            FlatRoad: 1.0,
+            duration: 4,
+            flat_road: 1.0,
         };
 
         assert_eq!(
@@ -382,11 +382,11 @@ mod tests {
     fn intervals_t_works() {
         // Of course implementation suffers because of the rounding errors
         let mut w = IntervalsT {
-            Repeat: 3,
-            OnDuration: 10,
-            OffDuration: 20,
-            OnPower: 80.0,
-            OffPower: 150.0,
+            repeat: 3,
+            on_duration: 10,
+            off_duration: 20,
+            on_power: 80.0,
+            off_power: 150.0,
             current_step: 0,
         };
 

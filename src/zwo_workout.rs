@@ -18,7 +18,7 @@ use crate::{
 };
 
 pub struct ZwoWorkout {
-    workout: workout_file,
+    workout: WorkoutFile,
     pending: Option<JoinHandle<()>>,
     current_step: WorkoutSteps,
     ftp_base: f64,
@@ -26,12 +26,12 @@ pub struct ZwoWorkout {
 
 // XML schema definition
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-#[allow(non_snake_case, non_camel_case_types)]
-struct workout_file {
+#[serde(rename_all="camelCase")]
+struct WorkoutFile {
     author: String,
     name: String,
     description: String,
-    sportType: String,
+    sport_type: String,
     workout: Workout,
 }
 
@@ -51,7 +51,7 @@ impl ZwoWorkout {
             .await
             .context("Reading xml to String failed")?;
 
-        let mut workout: workout_file =
+        let mut workout: WorkoutFile =
             from_str(&content).context("Parsing xml string to Workouts struct failed")?;
         trace!("Parsed xml {workout:#?}");
 
