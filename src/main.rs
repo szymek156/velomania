@@ -11,7 +11,7 @@ use zwo_workout::ZwoWorkout;
 
 use crate::ble_client::BleClient;
 use anyhow::Result;
-use cli::UserCommands;
+use cli::{UserCommands, WorkoutCommands};
 use futures::StreamExt;
 use indoor_bike_client::IndoorBikeFitnessMachine;
 use indoor_bike_data_defs::ControlPointResult;
@@ -48,34 +48,46 @@ async fn main() -> Result<()> {
 
     let opt = Args::from_args();
 
+    let mut res = Ok(());
+
+    // Channel used by workout task to broadcast power value to be set - received by control_fit_machine, but also by frontend
     let (command_tx, _command_rx) = tokio::sync::broadcast::channel(16);
+
+    // Channel used to control workout, skip step, pause
+    let (control_workout_tx, control_workout_rx) = tokio::sync::mpsc::channel(16);
 
     register_signal_handler(command_tx.clone());
 
-    let mut fit = connect_to_fit().await?;
+    // let mut fit = connect_to_fit().await?;
 
     // Start workout task, will broadcast next steps
-    let workout_join_handle =
-        start_workout(command_tx.clone(), opt.workout.as_path(), opt.ftp_base).await?;
+    let workout_join_handle = start_workout(
+        command_tx.clone(),
+        control_workout_rx,
+        opt.workout.as_path(),
+        opt.ftp_base,
+    )
+    .await?;
 
     // Tui shows current step + data from trainer
-    let tui_join_handle = tokio::spawn(front::tui::show(
-        command_tx.subscribe(),
-        fit.subscribe_for_indoor_bike_notifications(),
-        fit.subscribe_for_training_notifications(),
-    ));
+    // let tui_join_handle = tokio::spawn(front::tui::show(
+    //     command_tx.subscribe(),
+    //     fit.subscribe_for_indoor_bike_notifications(),
+    //     fit.subscribe_for_training_notifications(),
+    // ));
 
-    let res = control_fit_machine(&mut fit, command_tx.subscribe()).await;
+    // res = control_fit_machine(&mut fit, command_tx.subscribe()).await;
 
-    if res.is_err() {
-        error!("Got error {}", res.as_ref().unwrap_err());
-    }
+    // if res.is_err() {
+    //     error!("Got error {}", res.as_ref().unwrap_err());
+    // }
 
-    fit.disconnect().await?;
+    // fit.disconnect().await?;
 
-    let _ = tui_join_handle.await;
+    // let _ = tui_join_handle.await;
 
-    workout_join_handle.abort();
+    // workout_join_handle.abort();
+    let _ = workout_join_handle.await;
 
     res
 }
@@ -83,22 +95,44 @@ async fn main() -> Result<()> {
 /// Reads ZWO file, and sends commands according to it
 async fn start_workout(
     tx: tokio::sync::broadcast::Sender<UserCommands>,
+    mut control_workout_rx: tokio::sync::mpsc::Receiver<WorkoutCommands>,
     workout: &Path,
     ftp_base: f64,
 ) -> Result<tokio::task::JoinHandle<()>> {
     let mut workout = ZwoWorkout::new(&workout, ftp_base).await?;
 
     let handle = tokio::spawn(async move {
-        debug!("spawning workout stream");
+        debug!("spawning workout task");
 
-        while let Some(command) = workout.next().await {
-            // TODO: unwrap
-            debug!("Got command from workout: {command:?}");
+        loop {
+            tokio::select! {
+                workout_step = workout.next() => {
+                    match workout_step {
+                        Some(command) => {
+                            debug!("Got command from workout: {command:?}");
 
-            tx.send(command).unwrap();
+                            info!("workout state:");
+                            info!("{:#?}", workout.workout_state);
+
+                            tx.send(command).unwrap();
+                        }
+                        None => {
+                            debug!("No more steps in workout, workout task exits");
+                            tx.send(UserCommands::Exit).unwrap();
+                            break;
+                        },
+                    }
+                }
+                Some(control)  = control_workout_rx.recv() => {
+                    match control {
+                        WorkoutCommands::Pause=>workout.pause(),
+                        WorkoutCommands::Resume=>todo!(),
+                        WorkoutCommands::SkipStep=>todo!(),
+                        WorkoutCommands::Abort => todo!(),
+                    }
+                }
+            }
         }
-
-        tx.send(UserCommands::Exit).unwrap();
     });
 
     Ok(handle)

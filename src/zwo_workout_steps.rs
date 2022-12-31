@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub enum WorkoutSteps {
     Warmup(Warmup),
     Ramp(Ramp),
@@ -29,12 +29,12 @@ impl WorkoutSteps {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all="PascalCase")]
 pub struct Warmup {
-    duration: usize,
-    power_low: f64,
-    power_high: f64,
+    pub duration: u64,
+    pub power_low: f64,
+    pub power_high: f64,
 }
 
 impl WorkoutStep for Warmup {
@@ -58,12 +58,12 @@ impl WorkoutStep for Warmup {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all="PascalCase")]
 pub struct Ramp {
-    duration: usize,
-    power_low: f64,
-    power_high: f64,
+    pub duration: u64,
+    pub power_low: f64,
+    pub power_high: f64,
 }
 
 impl WorkoutStep for Ramp {
@@ -87,12 +87,12 @@ impl WorkoutStep for Ramp {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all="PascalCase")]
 pub struct Cooldown {
-    duration: usize,
-    power_low: f64,
-    power_high: f64,
+    pub duration: u64,
+    pub power_low: f64,
+    pub power_high: f64,
 }
 
 impl WorkoutStep for Cooldown {
@@ -117,11 +117,11 @@ impl WorkoutStep for Cooldown {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all="PascalCase")]
 pub struct SteadyState {
-    duration: u64,
-    power: f64,
+    pub duration: u64,
+    pub power: f64,
 }
 
 impl WorkoutStep for SteadyState {
@@ -141,17 +141,17 @@ impl WorkoutStep for SteadyState {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all="PascalCase")]
 pub struct IntervalsT {
-    repeat: usize,
-    on_duration: u64,
-    off_duration: u64,
-    on_power: f64,
-    off_power: f64,
+    pub repeat: u64,
+    pub on_duration: u64,
+    pub off_duration: u64,
+    pub on_power: f64,
+    pub off_power: f64,
 
     #[serde(skip)]
-    current_step: usize,
+    pub current_interval: usize,
 }
 
 impl WorkoutStep for IntervalsT {
@@ -160,7 +160,7 @@ impl WorkoutStep for IntervalsT {
             return None;
         }
 
-        let step = if self.current_step % 2 == 0 {
+        let step = if self.current_interval % 2 == 0 {
             Some(PowerDuration {
                 duration: Duration::from_secs(self.on_duration),
                 power_level: self.on_power,
@@ -173,17 +173,17 @@ impl WorkoutStep for IntervalsT {
             })
         };
 
-        self.current_step += 1;
+        self.current_interval += 1;
 
         step
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(rename_all="PascalCase")]
 pub struct FreeRide {
-    duration: u64,
-    flat_road: f64,
+    pub duration: u64,
+    pub flat_road: f64,
 }
 
 impl WorkoutStep for FreeRide {
@@ -205,7 +205,7 @@ impl WorkoutStep for FreeRide {
 }
 
 /// How much power should be set for how long
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct PowerDuration {
     pub duration: Duration,
     pub power_level: f64,
@@ -387,7 +387,7 @@ mod tests {
             off_duration: 20,
             on_power: 80.0,
             off_power: 150.0,
-            current_step: 0,
+            current_interval: 0,
         };
 
         assert_eq!(

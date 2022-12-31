@@ -24,6 +24,15 @@ pub enum UserCommands {
     Exit,
 }
 
+/// Commands to control flow of the workout
+#[derive(Debug)]
+pub enum WorkoutCommands {
+    Pause,
+    Resume,
+    SkipStep,
+    Abort
+}
+
 /// Read stdin and use clap to parse user input to the CLIMessages enum
 pub fn control_cli(tx: Sender<UserCommands>) {
     // It's not recommended to handle user input using async.
