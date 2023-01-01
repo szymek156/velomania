@@ -1,9 +1,7 @@
-use std::{collections::VecDeque, path::Path, task::Poll, time::Duration};
+use std::{path::Path, task::Poll, time::Duration};
 
 use anyhow::{Context, Result};
 use futures::{Future, Stream};
-
-use serde::{Deserialize, Serialize};
 
 use tokio::{
     io::AsyncReadExt,
@@ -14,46 +12,15 @@ use tokio::{
 
 use crate::{
     cli::UserCommands,
-    zwo_workout_steps::{PowerDuration, WorkoutSteps},
+    workout_state::WorkoutState,
+    zwo_workout_file::{PowerDuration, WorkoutFile, WorkoutSteps},
 };
 
 pub struct ZwoWorkout {
     workout_file: WorkoutFile,
     pending: Option<JoinHandle<()>>,
     pub workout_state: WorkoutState,
-    // current_step: WorkoutSteps,
-    // ftp_base: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct WorkoutState {
-    pub total_steps: usize,
-
-    pub total_workout_duration: Duration,
-    pub current_step_duration: Duration,
-
-    pub current_step_idx: usize,
-    pub current_step: WorkoutSteps,
-    pub next_step: Option<WorkoutSteps>,
-
-    pub current_power_set: i16,
-    pub ftp_base: f64,
-}
-// XML schema definition
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-struct WorkoutFile {
-    author: String,
-    name: String,
-    description: String,
-    sport_type: String,
-    workout: Workout,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct Workout {
-    #[serde(rename = "$value")]
-    workouts: VecDeque<WorkoutSteps>,
+    current_step: WorkoutSteps,
 }
 
 impl ZwoWorkout {
@@ -72,35 +39,21 @@ impl ZwoWorkout {
 
         info!("Loaded {}", workout_path.display());
 
-        let total_workout_duration = calculate_total_workout_duration(&workout);
-
-        let total_steps = workout.workout.workouts.len();
+        let workout_state = WorkoutState::new(&workout, ftp_base);
 
         let current_step = workout
             .workout
-            .workouts
+            .steps
             .pop_front()
             .expect("Workout does not contain any workout steps");
 
-        let current_step_duration = calculate_step_duration(&current_step);
-
         info!("Next step {current_step:?}");
-
-        let next_step = workout.workout.workouts.front().cloned();
 
         Ok(ZwoWorkout {
             workout_file: workout,
             pending: None,
-            workout_state: WorkoutState {
-                total_steps,
-                total_workout_duration,
-                current_step_duration,
-                current_step_idx: 1,
-                current_step,
-                next_step,
-                current_power_set: 0,
-                ftp_base,
-            },
+            workout_state,
+            current_step,
         })
     }
 
@@ -114,16 +67,17 @@ impl ZwoWorkout {
 
     fn advance_workout(&mut self) -> Option<PowerDuration> {
         let next_pd = {
-            if let Some(next_step) = self.workout_state.current_step.advance() {
+            if let Some(next_step) = self.current_step.advance() {
                 Some(next_step)
             } else {
                 // Current step exhausted, get next one
-                if let Some(next) = self.workout_file.workout.workouts.pop_front() {
+                self.workout_state.update_state(&self.workout_file);
+
+                if let Some(next) = self.workout_file.workout.steps.pop_front() {
                     // Start with next workout
-                    self.set_current_step(next);
+                    self.current_step = next;
 
                     let next_pd = self
-                        .workout_state
                         .current_step
                         .advance()
                         .expect("Cannot advance fresh workout step");
@@ -141,52 +95,11 @@ impl ZwoWorkout {
         }
 
         next_pd
-
-    }
-
-    /// Sets workout step that is currently executed, together with workout state update
-    fn set_current_step(&mut self, next: WorkoutSteps) {
-        self.workout_state.current_step = next;
-        self.workout_state.current_step_duration =
-            calculate_step_duration(&self.workout_state.current_step);
-        self.workout_state.current_step_idx += 1;
-        self.workout_state.next_step = self.workout_file.workout.workouts.front().cloned();
     }
 
     fn get_power(&self, power_level: f64) -> i16 {
         (self.workout_state.ftp_base * power_level).round() as i16
     }
-}
-
-/// Returns real time to spent on given workout step
-fn calculate_step_duration(workout_step: &WorkoutSteps) -> Duration {
-    let step_duration = {
-        let d = match workout_step {
-            WorkoutSteps::Warmup(x) => x.duration,
-            WorkoutSteps::Ramp(x) => x.duration,
-            WorkoutSteps::SteadyState(x) => x.duration,
-            WorkoutSteps::Cooldown(x) => x.duration,
-            WorkoutSteps::IntervalsT(x) => (x.on_duration + x.off_duration) * x.repeat,
-            WorkoutSteps::FreeRide(x) => x.duration,
-        };
-
-        Duration::from_secs(d)
-    };
-    step_duration
-}
-
-/// Total time this workout will take
-fn calculate_total_workout_duration(workout: &WorkoutFile) -> Duration {
-    let total_workout_duration = {
-        workout
-            .workout
-            .workouts
-            .iter()
-            .fold(Duration::from_secs(0), |acc, step| {
-                acc + calculate_step_duration(step)
-            })
-    };
-    total_workout_duration
 }
 
 // Stream trait cannot have private helper methods...
@@ -267,7 +180,7 @@ impl Stream for ZwoWorkout {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, Some(self.workout_file.workout.workouts.len()))
+        (0, Some(self.workout_file.workout.steps.len()))
     }
 }
 

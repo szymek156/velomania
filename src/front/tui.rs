@@ -8,24 +8,37 @@ use std::{
 use termion::raw::IntoRawMode;
 use tokio::sync::broadcast::Receiver;
 
-use crate::{indoor_bike_data_defs::BikeData, zwo_workout::WorkoutState};
+use crate::{indoor_bike_data_defs::BikeData, workout_state::WorkoutState};
 
 pub async fn show(
     mut workout_rx: Receiver<WorkoutState>,
-    mut indoor_bike_notif: Receiver<BikeData>,
-    mut training_notif: Receiver<String>,
+    indoor_bike_notif: Option<Receiver<BikeData>>,
+    training_notif: Option<Receiver<String>>,
 ) {
     clear_all();
-    loop {
-        tokio::select! {
-            state = workout_rx.recv() => {
-                handle_workout_state(state.unwrap());
+
+    if let (Some(mut indoor_bike_notif), Some(mut training_notif)) =
+        (indoor_bike_notif, training_notif)
+    {
+        loop {
+            tokio::select! {
+                state = workout_rx.recv() => {
+                    handle_workout_state(state.unwrap());
+                }
+                bike_data = indoor_bike_notif.recv() => {
+                    handle_bike_data(bike_data.unwrap());
+                }
+                training_data = training_notif.recv() => {
+                    handle_training_data(training_data.unwrap());
+                }
             }
-            bike_data = indoor_bike_notif.recv() => {
-                handle_bike_data(bike_data.unwrap());
-            }
-            training_data = training_notif.recv() => {
-                handle_training_data(training_data.unwrap());
+        }
+    } else {
+        loop {
+            tokio::select! {
+                state = workout_rx.recv() => {
+                    handle_workout_state(state.unwrap());
+                }
             }
         }
     }
@@ -37,7 +50,7 @@ fn handle_workout_state(state: WorkoutState) {
     clear(start_y, start_y + nr_lines);
 
     let data_str = format!("== WORKOUT STATE ==\n\rFTP base: {}\n\rcurrent power set: {}\n\rworkout duration: {}\n\rstep: {}/{}\n\rcurrent step: {:?}\n\rstep duration {}\n\rnext step: {:?}\n\r",
-    state.ftp_base, state.current_power_set, humantime::format_duration(state.total_workout_duration), state.current_step_idx, state.total_steps, state.current_step, humantime::format_duration(state.current_step_duration), state.next_step);
+    state.ftp_base, state.current_power_set, humantime::format_duration(state.total_workout_duration), state.current_step_number, state.total_steps, state.current_step, humantime::format_duration(state.current_step_duration), state.next_step);
     let stdout = stdout();
 
     let mut stdout = stdout.lock().into_raw_mode().unwrap();

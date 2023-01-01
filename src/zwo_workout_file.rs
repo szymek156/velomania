@@ -1,6 +1,23 @@
-use std::time::Duration;
+use std::{collections::VecDeque, time::Duration};
 
 use serde::{Deserialize, Serialize};
+
+// XML schema definition
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkoutFile {
+    pub author: String,
+    pub name: String,
+    pub description: String,
+    pub sport_type: String,
+    pub workout: Workout,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct Workout {
+    #[serde(rename = "$value")]
+    pub steps: VecDeque<WorkoutSteps>,
+}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub enum WorkoutSteps {
@@ -30,7 +47,7 @@ impl WorkoutSteps {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all="PascalCase")]
+#[serde(rename_all = "PascalCase")]
 pub struct Warmup {
     pub duration: u64,
     pub power_low: f64,
@@ -59,7 +76,7 @@ impl WorkoutStep for Warmup {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all="PascalCase")]
+#[serde(rename_all = "PascalCase")]
 pub struct Ramp {
     pub duration: u64,
     pub power_low: f64,
@@ -88,7 +105,7 @@ impl WorkoutStep for Ramp {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all="PascalCase")]
+#[serde(rename_all = "PascalCase")]
 pub struct Cooldown {
     pub duration: u64,
     pub power_low: f64,
@@ -118,7 +135,7 @@ impl WorkoutStep for Cooldown {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all="PascalCase")]
+#[serde(rename_all = "PascalCase")]
 pub struct SteadyState {
     pub duration: u64,
     pub power: f64,
@@ -142,7 +159,7 @@ impl WorkoutStep for SteadyState {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all="PascalCase")]
+#[serde(rename_all = "PascalCase")]
 pub struct IntervalsT {
     pub repeat: u64,
     pub on_duration: u64,
@@ -180,7 +197,7 @@ impl WorkoutStep for IntervalsT {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all="PascalCase")]
+#[serde(rename_all = "PascalCase")]
 pub struct FreeRide {
     pub duration: u64,
     pub flat_road: f64,
@@ -358,7 +375,6 @@ mod tests {
         );
         assert_eq!(w.advance(), None);
     }
-
 
     #[test]
     fn free_ride_works() {

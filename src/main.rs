@@ -1,13 +1,10 @@
 #[macro_use]
 extern crate num_derive;
-use std::{
-    path::{Path, PathBuf},
-    thread::JoinHandle,
-};
+use std::path::{Path, PathBuf};
 
-use front::tui;
 use structopt::StructOpt;
-use zwo_workout::{ZwoWorkout, WorkoutState};
+use workout_state::WorkoutState;
+use zwo_workout::ZwoWorkout;
 
 use crate::ble_client::BleClient;
 use anyhow::Result;
@@ -26,8 +23,9 @@ mod front;
 mod indoor_bike_client;
 mod indoor_bike_data_defs;
 mod scalar_converter;
+mod workout_state;
 mod zwo_workout;
-mod zwo_workout_steps;
+mod zwo_workout_file;
 
 #[macro_use]
 extern crate log;
@@ -46,6 +44,8 @@ struct Args {
 async fn main() -> Result<()> {
     env_logger::init();
 
+    let connect_to_trainer = false;
+
     let opt = Args::from_args();
 
     let mut res = Ok(());
@@ -59,7 +59,21 @@ async fn main() -> Result<()> {
 
     register_signal_handler(trainer_commands_tx.clone());
 
-    let mut fit = connect_to_fit().await?;
+    let (fit, bike_notifications, training_notifications) = {
+        if connect_to_trainer {
+            let fit = connect_to_fit().await?;
+            let bike_notifications = fit.subscribe_for_indoor_bike_notifications();
+            let training_notifications = fit.subscribe_for_training_notifications();
+
+            (
+                Some(fit),
+                Some(bike_notifications),
+                Some(training_notifications),
+            )
+        } else {
+            (None, None, None)
+        }
+    };
 
     // Start workout task, will broadcast next steps
     let workout_join_handle = start_workout(
@@ -74,22 +88,26 @@ async fn main() -> Result<()> {
     // Tui shows current step + data from trainer
     let tui_join_handle = tokio::spawn(front::tui::show(
         workout_state_tx.subscribe(),
-        fit.subscribe_for_indoor_bike_notifications(),
-        fit.subscribe_for_training_notifications(),
+        bike_notifications,
+        training_notifications,
     ));
 
-    res = control_fit_machine(&mut fit, trainer_commands_tx.subscribe()).await;
+    let fit_controller_join_handle = if let Some(mut fit) = fit {
+        Some(tokio::spawn(control_fit_machine(
+            fit,
+            trainer_commands_tx.subscribe(),
+        )))
+    } else {
+        None
+    };
 
-    if res.is_err() {
-        error!("Got error {}", res.as_ref().unwrap_err());
+    let _ = workout_join_handle.await;
+
+    if let Some(fit_controller) = fit_controller_join_handle {
+        let _ = fit_controller.await;
     }
 
-    fit.disconnect().await?;
-
     tui_join_handle.abort();
-
-    workout_join_handle.abort();
-    // let _ = workout_join_handle.await;
 
     res
 }
@@ -125,6 +143,10 @@ async fn start_workout(
                     }
 
                     // Propagate workout state as it's likely changed
+                    // TODO: to be changed, subscribe for zwo workout state channel,
+                    // grab the data, and broadcast here
+                    // or implement future?
+                    // like workout.workout_state.next().await
                     workout_state_tx.send(workout.workout_state.clone()).unwrap();
                 }
                 Some(control)  = control_workout_rx.recv() => {
@@ -144,9 +166,11 @@ async fn start_workout(
 
 /// Gets the commands (may be ZWO workout, or user input), and passes them to the fitness machine
 async fn control_fit_machine(
-    fit: &mut IndoorBikeFitnessMachine,
+    fit: IndoorBikeFitnessMachine,
     mut rx: Receiver<UserCommands>,
 ) -> Result<()> {
+    // Cannot set return type of async block, async closures are unstable
+
     fit.dump_service_info().await?;
     fit.get_features().await?;
 
@@ -180,6 +204,8 @@ async fn control_fit_machine(
             }
         }
     }
+
+    fit.disconnect().await?;
 
     Ok(())
 }
