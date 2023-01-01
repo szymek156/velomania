@@ -48,7 +48,6 @@ async fn main() -> Result<()> {
 
     let opt = Args::from_args();
 
-
     // Channel used by workout task to broadcast power value to be set - received by control_fit_machine, but also by frontend
     let (trainer_commands_tx, _command_rx) = tokio::sync::broadcast::channel(16);
     let (workout_state_tx, _rx) = tokio::sync::broadcast::channel(16);
@@ -70,6 +69,7 @@ async fn main() -> Result<()> {
                 Some(training_notifications),
             )
         } else {
+            // TODO: create fake data in the future
             (None, None, None)
         }
     };

@@ -45,36 +45,26 @@ pub async fn show(
 }
 
 fn handle_workout_state(state: WorkoutState) {
-    let start_y = 1;
+    let start_row = 1;
     let nr_lines = 9;
-    clear(start_y, start_y + nr_lines);
+    clear(start_row, start_row + nr_lines);
 
-    let data_str = format!("== WORKOUT STATE ==\n\rFTP base: {}\n\rcurrent power set: {}\n\rworkout duration: {}\n\rstep: {}/{}\n\rcurrent step: {:?}\n\rstep duration {}\n\rnext step: {:?}\n\r",
-    state.ftp_base, state.current_power_set, humantime::format_duration(state.total_workout_duration), state.current_step_number, state.total_steps, state.current_step, humantime::format_duration(state.current_step_duration), state.next_step);
+    let data_str =
+        format!("== WORKOUT STATE ==\n\rFTP base: {}\n\rcurrent power set: {}\n\rworkout duration: {}\n\rstep: {}/{}\n\rcurrent step: {:?}\n\rstep duration {}\n\rnext step: {:?}\n\r",
+            state.ftp_base, state.current_power_set,
+            humantime::format_duration(state.total_workout_duration),
+            state.current_step_number,
+            state.total_steps,
+            state.current_step,
+            humantime::format_duration(state.current_step_duration),
+            state.next_step);
+
     let stdout = stdout();
 
     let mut stdout = stdout.lock().into_raw_mode().unwrap();
 
-    write!(stdout, "{}{}", termion::cursor::Goto(1, start_y), data_str,).unwrap();
+    write!(stdout, "{}{}", termion::cursor::Goto(1, start_row), data_str,).unwrap();
 }
-
-// fn handle_workout_step(c: UserCommands) {
-//     let stdout = stdout();
-
-//     let mut stdout = stdout.lock().into_raw_mode().unwrap();
-
-//     write!(
-//         stdout,
-//         "{}{} Workout step: {:?}{}",
-//         termion::cursor::Goto(1, 51),
-//         termion::clear::CurrentLine,
-//         c,
-//         termion::cursor::Goto(1, 1),
-//     )
-//     .unwrap();
-
-//     stdout.flush().unwrap();
-// }
 
 fn handle_training_data(data: String) {
     let stdout = stdout();
@@ -95,9 +85,9 @@ fn handle_training_data(data: String) {
 }
 
 fn handle_bike_data(data: BikeData) {
-    let start_y = 10;
+    let start_row = 10;
     let nr_lines = 11;
-    clear(start_y, start_y + nr_lines);
+    clear(start_row, start_row + nr_lines);
 
     let data_str = format!("== BIKE DATA==\n\rTIME: {:?} --> {:?}\n\rDISTANCE {:?}\n\r\n\rPOWER {:?}\n\rSPEED{:?}\n\rCADENCE {:?}\n\rAVG POWER {:?}\n\rAVG SPEED {:?}\n\rAVG CADENCE {:?}\n\rRESISTANCE {:?}",
     data.elapsed_time, data.remaining_time, data.tot_distance, data.inst_power, data.inst_speed, data.inst_cadence, data.avg_power, data.avg_speed, data.avg_cadence, data.resistance_lvl);
@@ -105,18 +95,19 @@ fn handle_bike_data(data: BikeData) {
 
     let mut stdout = stdout.lock().into_raw_mode().unwrap();
 
-    write!(stdout, "{}{}", termion::cursor::Goto(1, start_y), data_str,).unwrap();
+    write!(stdout, "{}{}", termion::cursor::Goto(1, start_row), data_str,).unwrap();
 
     stdout.flush().unwrap();
 }
 
-fn clear(start_y: u16, end_y: u16) {
-    assert!(end_y >= start_y);
+/// Clear part of the screen
+fn clear(start_row: u16, end_row: u16) {
+    assert!(end_row >= start_row);
 
     let stdout = stdout();
     let mut stdout = stdout.lock().into_raw_mode().unwrap();
 
-    for line in start_y..=end_y {
+    for line in start_row..=end_row {
         write!(
             stdout,
             "{}{}",
