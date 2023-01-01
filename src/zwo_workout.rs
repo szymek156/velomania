@@ -25,19 +25,19 @@ pub struct ZwoWorkout {
     // ftp_base: f64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WorkoutState {
-    total_steps: usize,
+    pub total_steps: usize,
 
-    total_workout_duration: Duration,
-    current_step_duration: Duration,
+    pub total_workout_duration: Duration,
+    pub current_step_duration: Duration,
 
-    current_step_idx: usize,
-    current_step: WorkoutSteps,
-    next_step: Option<WorkoutSteps>,
+    pub current_step_idx: usize,
+    pub current_step: WorkoutSteps,
+    pub next_step: Option<WorkoutSteps>,
 
-    current_power_set: i16,
-    ftp_base: f64,
+    pub current_power_set: i16,
+    pub ftp_base: f64,
 }
 // XML schema definition
 #[derive(Debug, Serialize, Deserialize, PartialEq)]

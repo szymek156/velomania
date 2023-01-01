@@ -8,37 +8,18 @@ use std::{
 use termion::raw::IntoRawMode;
 use tokio::sync::broadcast::Receiver;
 
-use crate::{cli::UserCommands, indoor_bike_data_defs::BikeData};
+use crate::{indoor_bike_data_defs::BikeData, zwo_workout::WorkoutState};
 
 pub async fn show(
-    mut workout_rx: Receiver<UserCommands>,
+    mut workout_rx: Receiver<WorkoutState>,
     mut indoor_bike_notif: Receiver<BikeData>,
     mut training_notif: Receiver<String>,
 ) {
-    clear();
+    clear_all();
     loop {
         tokio::select! {
-            c = workout_rx.recv() => {
-                let c = c.unwrap();
-
-                match c {
-                    UserCommands::Exit => {
-                        let stdout = stdout();
-
-                        let mut stdout = stdout.lock().into_raw_mode().unwrap();
-                        let _ = write!(
-                            stdout,
-                            "{}{} Got exit!{}",
-                            termion::cursor::Goto(1, 11),
-                            termion::clear::CurrentLine,
-                            termion::cursor::Goto(1, 1),
-                        );
-                        break
-                    }
-                    other @ _  => {
-                        handle_workout_step(other);
-                    },
-                }
+            state = workout_rx.recv() => {
+                handle_workout_state(state.unwrap());
             }
             bike_data = indoor_bike_notif.recv() => {
                 handle_bike_data(bike_data.unwrap());
@@ -50,23 +31,37 @@ pub async fn show(
     }
 }
 
-fn handle_workout_step(c: UserCommands) {
+fn handle_workout_state(state: WorkoutState) {
+    let start_y = 1;
+    let nr_lines = 9;
+    clear(start_y, start_y + nr_lines);
+
+    let data_str = format!("== WORKOUT STATE ==\n\rFTP base: {}\n\rcurrent power set: {}\n\rworkout duration: {}\n\rstep: {}/{}\n\rcurrent step: {:?}\n\rstep duration {}\n\rnext step: {:?}\n\r",
+    state.ftp_base, state.current_power_set, humantime::format_duration(state.total_workout_duration), state.current_step_idx, state.total_steps, state.current_step, humantime::format_duration(state.current_step_duration), state.next_step);
     let stdout = stdout();
 
     let mut stdout = stdout.lock().into_raw_mode().unwrap();
 
-    write!(
-        stdout,
-        "{}{} Workout step: {:?}{}",
-        termion::cursor::Goto(1, 51),
-        termion::clear::CurrentLine,
-        c,
-        termion::cursor::Goto(1, 1),
-    )
-    .unwrap();
-
-    stdout.flush().unwrap();
+    write!(stdout, "{}{}", termion::cursor::Goto(1, start_y), data_str,).unwrap();
 }
+
+// fn handle_workout_step(c: UserCommands) {
+//     let stdout = stdout();
+
+//     let mut stdout = stdout.lock().into_raw_mode().unwrap();
+
+//     write!(
+//         stdout,
+//         "{}{} Workout step: {:?}{}",
+//         termion::cursor::Goto(1, 51),
+//         termion::clear::CurrentLine,
+//         c,
+//         termion::cursor::Goto(1, 1),
+//     )
+//     .unwrap();
+
+//     stdout.flush().unwrap();
+// }
 
 fn handle_training_data(data: String) {
     let stdout = stdout();
@@ -87,26 +82,41 @@ fn handle_training_data(data: String) {
 }
 
 fn handle_bike_data(data: BikeData) {
-    let data_str = format!("TIME: {:?} --> {:?}\n\rDISTANCE {:?}\n\r\n\rPOWER {:?}\n\rSPEED{:?}\n\rCADENCE {:?}\n\rAVG POWER {:?}\n\rAVG SPEED {:?}\n\rAVG CADENCE {:?}\n\rRESISTANCE {:?}",
+    let start_y = 10;
+    let nr_lines = 11;
+    clear(start_y, start_y + nr_lines);
+
+    let data_str = format!("== BIKE DATA==\n\rTIME: {:?} --> {:?}\n\rDISTANCE {:?}\n\r\n\rPOWER {:?}\n\rSPEED{:?}\n\rCADENCE {:?}\n\rAVG POWER {:?}\n\rAVG SPEED {:?}\n\rAVG CADENCE {:?}\n\rRESISTANCE {:?}",
     data.elapsed_time, data.remaining_time, data.tot_distance, data.inst_power, data.inst_speed, data.inst_cadence, data.avg_power, data.avg_speed, data.avg_cadence, data.resistance_lvl);
     let stdout = stdout();
 
     let mut stdout = stdout.lock().into_raw_mode().unwrap();
 
-    write!(
-        stdout,
-        "{}{}{}{}",
-        termion::cursor::Goto(1, 31),
-        termion::clear::BeforeCursor,
-        data_str,
-        termion::cursor::Goto(1, 1),
-    )
-    .unwrap();
+    write!(stdout, "{}{}", termion::cursor::Goto(1, start_y), data_str,).unwrap();
 
     stdout.flush().unwrap();
 }
 
-fn clear() {
+fn clear(start_y: u16, end_y: u16) {
+    assert!(end_y >= start_y);
+
+    let stdout = stdout();
+    let mut stdout = stdout.lock().into_raw_mode().unwrap();
+
+    for line in start_y..=end_y {
+        write!(
+            stdout,
+            "{}{}",
+            termion::cursor::Goto(1, line),
+            termion::clear::CurrentLine,
+        )
+        .unwrap();
+    }
+
+    stdout.flush().unwrap();
+}
+
+fn clear_all() {
     let stdout = stdout();
     let mut stdout = stdout.lock().into_raw_mode().unwrap();
 

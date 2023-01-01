@@ -7,7 +7,7 @@ use std::{
 
 use front::tui;
 use structopt::StructOpt;
-use zwo_workout::ZwoWorkout;
+use zwo_workout::{ZwoWorkout, WorkoutState};
 
 use crate::ble_client::BleClient;
 use anyhow::Result;
@@ -51,18 +51,20 @@ async fn main() -> Result<()> {
     let mut res = Ok(());
 
     // Channel used by workout task to broadcast power value to be set - received by control_fit_machine, but also by frontend
-    let (command_tx, _command_rx) = tokio::sync::broadcast::channel(16);
+    let (trainer_commands_tx, _command_rx) = tokio::sync::broadcast::channel(16);
+    let (workout_state_tx, _rx) = tokio::sync::broadcast::channel(16);
 
     // Channel used to control workout, skip step, pause
     let (control_workout_tx, control_workout_rx) = tokio::sync::mpsc::channel(16);
 
-    register_signal_handler(command_tx.clone());
+    register_signal_handler(trainer_commands_tx.clone());
 
-    // let mut fit = connect_to_fit().await?;
+    let mut fit = connect_to_fit().await?;
 
     // Start workout task, will broadcast next steps
     let workout_join_handle = start_workout(
-        command_tx.clone(),
+        trainer_commands_tx.clone(),
+        workout_state_tx.clone(),
         control_workout_rx,
         opt.workout.as_path(),
         opt.ftp_base,
@@ -70,31 +72,32 @@ async fn main() -> Result<()> {
     .await?;
 
     // Tui shows current step + data from trainer
-    // let tui_join_handle = tokio::spawn(front::tui::show(
-    //     command_tx.subscribe(),
-    //     fit.subscribe_for_indoor_bike_notifications(),
-    //     fit.subscribe_for_training_notifications(),
-    // ));
+    let tui_join_handle = tokio::spawn(front::tui::show(
+        workout_state_tx.subscribe(),
+        fit.subscribe_for_indoor_bike_notifications(),
+        fit.subscribe_for_training_notifications(),
+    ));
 
-    // res = control_fit_machine(&mut fit, command_tx.subscribe()).await;
+    res = control_fit_machine(&mut fit, trainer_commands_tx.subscribe()).await;
 
-    // if res.is_err() {
-    //     error!("Got error {}", res.as_ref().unwrap_err());
-    // }
+    if res.is_err() {
+        error!("Got error {}", res.as_ref().unwrap_err());
+    }
 
-    // fit.disconnect().await?;
+    fit.disconnect().await?;
 
-    // let _ = tui_join_handle.await;
+    tui_join_handle.abort();
 
-    // workout_join_handle.abort();
-    let _ = workout_join_handle.await;
+    workout_join_handle.abort();
+    // let _ = workout_join_handle.await;
 
     res
 }
 
 /// Reads ZWO file, and sends commands according to it
 async fn start_workout(
-    tx: tokio::sync::broadcast::Sender<UserCommands>,
+    trainer_commands_tx: tokio::sync::broadcast::Sender<UserCommands>,
+    workout_state_tx: tokio::sync::broadcast::Sender<WorkoutState>,
     mut control_workout_rx: tokio::sync::mpsc::Receiver<WorkoutCommands>,
     workout: &Path,
     ftp_base: f64,
@@ -107,21 +110,22 @@ async fn start_workout(
         loop {
             tokio::select! {
                 workout_step = workout.next() => {
+                    // Next step is available
                     match workout_step {
                         Some(command) => {
                             debug!("Got command from workout: {command:?}");
 
-                            info!("workout state:");
-                            info!("{:#?}", workout.workout_state);
-
-                            tx.send(command).unwrap();
+                            trainer_commands_tx.send(command).unwrap();
                         }
                         None => {
                             debug!("No more steps in workout, workout task exits");
-                            tx.send(UserCommands::Exit).unwrap();
+                            trainer_commands_tx.send(UserCommands::Exit).unwrap();
                             break;
                         },
                     }
+
+                    // Propagate workout state as it's likely changed
+                    workout_state_tx.send(workout.workout_state.clone()).unwrap();
                 }
                 Some(control)  = control_workout_rx.recv() => {
                     match control {
