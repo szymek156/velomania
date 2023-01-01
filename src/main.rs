@@ -48,7 +48,6 @@ async fn main() -> Result<()> {
 
     let opt = Args::from_args();
 
-    let mut res = Ok(());
 
     // Channel used by workout task to broadcast power value to be set - received by control_fit_machine, but also by frontend
     let (trainer_commands_tx, _command_rx) = tokio::sync::broadcast::channel(16);
@@ -92,24 +91,28 @@ async fn main() -> Result<()> {
         training_notifications,
     ));
 
-    let fit_controller_join_handle = if let Some(mut fit) = fit {
-        Some(tokio::spawn(control_fit_machine(
-            fit,
-            trainer_commands_tx.subscribe(),
-        )))
+    if let Some(fit) = fit {
+        control_fit_machine(fit, trainer_commands_tx.subscribe()).await?;
     } else {
-        None
+
+        // Listen for sigterm
+        let mut rx = trainer_commands_tx.subscribe();
+        while let Ok(message) = rx.recv().await {
+            match message {
+                UserCommands::Exit => {
+                    info!("Exit!");
+                    break;
+                }
+                _ => ()
+            }
+        }
+
     };
 
-    let _ = workout_join_handle.await;
-
-    if let Some(fit_controller) = fit_controller_join_handle {
-        let _ = fit_controller.await;
-    }
-
+    workout_join_handle.abort();
     tui_join_handle.abort();
 
-    res
+    Ok(())
 }
 
 /// Reads ZWO file, and sends commands according to it
