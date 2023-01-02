@@ -1,4 +1,4 @@
-use std::{path::Path, task::Poll, time::Duration};
+use std::{path::Path, pin::Pin, task::Poll, time::Duration};
 
 use anyhow::{Context, Result};
 use futures::{Future, Stream};
@@ -7,7 +7,7 @@ use tokio::{
     io::AsyncReadExt,
     pin,
     task::JoinHandle,
-    time::{self},
+    time::{self, Sleep, Instant},
 };
 
 use crate::{
@@ -18,7 +18,7 @@ use crate::{
 
 pub struct ZwoWorkout {
     workout_file: WorkoutFile,
-    pending: Option<JoinHandle<()>>,
+    pending: Pin<Box<Sleep>>,
     pub workout_state: WorkoutState,
     current_step: WorkoutSteps,
 }
@@ -51,7 +51,7 @@ impl ZwoWorkout {
 
         Ok(ZwoWorkout {
             workout_file: workout,
-            pending: None,
+            pending: Box::pin(tokio::time::sleep(Duration::from_secs(0))),
             workout_state,
             current_step,
         })
@@ -59,10 +59,11 @@ impl ZwoWorkout {
 
     pub fn pause(&mut self) {
         info!("Workout paused");
-        let pending = self.pending.take();
-        if let Some(timer) = pending {
-            timer.abort();
-        };
+        self.pending.as_mut().reset(Instant::now() + Duration::MAX)
+        // let pending = self.pending.take();
+        // if let Some(timer) = pending {
+        //     timer.abort();
+        // };
     }
 
     fn advance_workout(&mut self) -> Option<PowerDuration> {
@@ -102,28 +103,6 @@ impl ZwoWorkout {
     }
 }
 
-// Stream trait cannot have private helper methods...
-// Add another trait to separate stream-like logic from
-// workout logic
-trait StreamHelper {
-    fn setup_timer(&mut self, duration: Duration, cx: &mut std::task::Context<'_>);
-}
-
-impl StreamHelper for ZwoWorkout {
-    fn setup_timer(&mut self, duration: Duration, cx: &mut std::task::Context<'_>) {
-        // Wake the stream when timer fires up - then return next workout
-        let waker = cx.waker().clone();
-
-        // TODO: there should be a way to use time::interval().poll_tick
-        let handle = tokio::spawn(async move {
-            time::sleep(duration).await;
-            waker.wake();
-        });
-
-        self.pending = Some(handle);
-    }
-}
-
 impl Stream for ZwoWorkout {
     type Item = UserCommands;
 
@@ -131,51 +110,28 @@ impl Stream for ZwoWorkout {
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        if let Some(handle) = self.pending.take() {
-            pin!(handle);
+        match self.pending.as_mut().poll(cx) {
+            Poll::Ready(_) => {
+                debug!("Timer ready, advancing workout");
 
-            match handle.poll(cx) {
-                // Timer already fired before poll_next was called on the iterator.
-                // In such case return next workout immediately
-                Poll::Ready(_) => {
-                    warn!("Returning stale workout data!");
-                    // TODO: repetition of the code below
-                    match self.advance_workout() {
-                        Some(PowerDuration {
-                            duration,
-                            power_level,
-                        }) => {
-                            self.setup_timer(duration, cx);
+                match self.advance_workout() {
+                    Some(PowerDuration {
+                        duration,
+                        power_level,
+                    }) => {
+                        self.pending = Box::pin(tokio::time::sleep(duration));
 
-                            return Poll::Ready(Some(UserCommands::SetTargetPower {
-                                power: self.get_power(power_level),
-                            }));
-                        }
-
-                        // Whole workout exhausted
-                        None => return Poll::Ready(None),
+                        Poll::Ready(Some(UserCommands::SetTargetPower {
+                            power: self.get_power(power_level),
+                        }))
                     }
-                }
-                // Previous workout should be still executed
-                Poll::Pending => return Poll::Pending,
-            }
-        } else {
-            // No workout pending, get next one
-            match self.advance_workout() {
-                Some(PowerDuration {
-                    duration,
-                    power_level,
-                }) => {
-                    self.setup_timer(duration, cx);
 
-                    return Poll::Ready(Some(UserCommands::SetTargetPower {
-                        power: self.get_power(power_level),
-                    }));
+                    // Whole workout exhausted
+                    None => Poll::Ready(None),
                 }
-
-                // Whole workout exhausted
-                None => return Poll::Ready(None),
             }
+            // Previous step should be still executed
+            Poll::Pending => Poll::Pending,
         }
     }
 

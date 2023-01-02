@@ -1,6 +1,9 @@
 #[macro_use]
 extern crate num_derive;
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use structopt::StructOpt;
 use workout_state::WorkoutState;
@@ -14,7 +17,7 @@ use indoor_bike_client::IndoorBikeFitnessMachine;
 use indoor_bike_data_defs::ControlPointResult;
 use signal_hook::consts::signal::*;
 use signal_hook_async_std::Signals;
-use tokio::{sync::broadcast::Receiver, task};
+use tokio::{sync::broadcast::Receiver, task, time::Instant};
 
 mod bk_gatts_service;
 mod ble_client;
@@ -94,7 +97,6 @@ async fn main() -> Result<()> {
     if let Some(fit) = fit {
         control_fit_machine(fit, trainer_commands_tx.subscribe()).await?;
     } else {
-
         // Listen for sigterm
         let mut rx = trainer_commands_tx.subscribe();
         while let Ok(message) = rx.recv().await {
@@ -103,10 +105,9 @@ async fn main() -> Result<()> {
                     info!("Exit!");
                     break;
                 }
-                _ => ()
+                _ => (),
             }
         }
-
     };
 
     workout_join_handle.abort();
@@ -128,6 +129,9 @@ async fn start_workout(
     let handle = tokio::spawn(async move {
         debug!("spawning workout task");
 
+        let sleep = tokio::time::interval(Duration::from_secs(1));
+        tokio::pin!(sleep);
+
         loop {
             tokio::select! {
                 workout_step = workout.next() => {
@@ -135,6 +139,9 @@ async fn start_workout(
                     match workout_step {
                         Some(command) => {
                             debug!("Got command from workout: {command:?}");
+                            debug!("workout {}/{}",
+                                workout.workout_state.current_step_number,
+                                workout.workout_state.total_steps);
 
                             trainer_commands_tx.send(command).unwrap();
                         }
@@ -144,14 +151,20 @@ async fn start_workout(
                             break;
                         },
                     }
+                }
+                _ = sleep.tick() => {
+                    debug!("Broadcast workout state {}/{}",
+                        workout.workout_state.current_step_number,
+                        workout.workout_state.total_steps);
 
-                    // Propagate workout state as it's likely changed
-                    // TODO: to be changed, subscribe for zwo workout state channel,
-                    // grab the data, and broadcast here
-                    // or implement future?
-                    // like workout.workout_state.next().await
+                    workout.workout_state.update_ts(Instant::now());
                     workout_state_tx.send(workout.workout_state.clone()).unwrap();
                 }
+                // TODO: Arc? Nope, RefCell? Nope will panic during runtime
+                // Do subscribe to the channel from the workout state?
+                // Some(workout_state) = workout.workout_state.next() => {
+                //     workout_state_tx.send(workout.workout_state.clone()).unwrap();
+                // }
                 Some(control)  = control_workout_rx.recv() => {
                     match control {
                         WorkoutCommands::Pause=>workout.pause(),

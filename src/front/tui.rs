@@ -3,6 +3,7 @@
 use std::{
     fmt::format,
     io::{stdout, Write},
+    time::Duration,
 };
 
 use termion::raw::IntoRawMode;
@@ -50,20 +51,30 @@ fn handle_workout_state(state: WorkoutState) {
     clear(start_row, start_row + nr_lines);
 
     let data_str =
-        format!("== WORKOUT STATE ==\n\rFTP base: {}\n\rcurrent power set: {}\n\rworkout duration: {}\n\rstep: {}/{}\n\rcurrent step: {:?}\n\rstep duration {}\n\rnext step: {:?}\n\r",
+        format!("== WORKOUT STATE ==\n\rFTP base: {}\n\rcurrent power set: {}\n\rworkout duration: {} elapsed {} to go {}\n\rstep: {}/{}\n\rcurrent step: {:?}\n\rstep duration {} elapsed {} to go {}\n\rnext step: {:?}\n\r",
             state.ftp_base, state.current_power_set,
-            humantime::format_duration(state.total_workout_duration),
+            duration_to_string(&state.total_workout_duration),
+            duration_to_string(&state.workout_elapsed),
+            duration_to_string(&state.total_workout_duration.saturating_sub(state.workout_elapsed)),
             state.current_step_number,
             state.total_steps,
             state.current_step,
-            humantime::format_duration(state.current_step_duration),
+            duration_to_string(&state.current_step_duration),
+            duration_to_string(&state.step_elapsed),
+            duration_to_string(&state.current_step_duration.saturating_sub(state.step_elapsed) ),
             state.next_step);
 
     let stdout = stdout();
 
     let mut stdout = stdout.lock().into_raw_mode().unwrap();
 
-    write!(stdout, "{}{}", termion::cursor::Goto(1, start_row), data_str,).unwrap();
+    write!(
+        stdout,
+        "{}{}",
+        termion::cursor::Goto(1, start_row),
+        data_str,
+    )
+    .unwrap();
 }
 
 fn handle_training_data(data: String) {
@@ -95,7 +106,13 @@ fn handle_bike_data(data: BikeData) {
 
     let mut stdout = stdout.lock().into_raw_mode().unwrap();
 
-    write!(stdout, "{}{}", termion::cursor::Goto(1, start_row), data_str,).unwrap();
+    write!(
+        stdout,
+        "{}{}",
+        termion::cursor::Goto(1, start_row),
+        data_str,
+    )
+    .unwrap();
 
     stdout.flush().unwrap();
 }
@@ -133,4 +150,33 @@ fn clear_all() {
     .unwrap();
 
     stdout.flush().unwrap();
+}
+
+fn duration_to_string(duration: &Duration) -> String {
+    const HOUR_IN_SECONDS: u64 = 3600;
+    const MINUTE_IN_SECONDS: u64 = 60;
+
+    let secs = duration.as_secs();
+
+    let hours = secs / HOUR_IN_SECONDS;
+    let secs = secs % HOUR_IN_SECONDS;
+
+    let mins = secs / MINUTE_IN_SECONDS;
+    let secs = secs % MINUTE_IN_SECONDS;
+
+    let res = format!("{secs}s");
+
+    let res = if mins > 0 {
+        format!("{mins}m {res}")
+    } else {
+        res
+    };
+
+    let res = if hours > 0 {
+        format!("{hours}h {res}")
+    } else {
+        res
+    };
+
+    res
 }

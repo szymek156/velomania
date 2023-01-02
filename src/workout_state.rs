@@ -1,4 +1,7 @@
-use std::time::Duration;
+use std::{task::Poll, time::Duration};
+
+use futures::Stream;
+use tokio::time::Instant;
 
 use crate::zwo_workout_file::{WorkoutFile, WorkoutSteps};
 
@@ -15,6 +18,12 @@ pub struct WorkoutState {
 
     pub current_power_set: i16,
     pub ftp_base: f64,
+
+    pub workout_elapsed: Duration,
+    pub step_elapsed: Duration,
+
+    workout_started: Instant,
+    step_started: Instant,
 }
 
 impl WorkoutState {
@@ -53,10 +62,20 @@ impl WorkoutState {
     pub fn update_state(&mut self, workout: &WorkoutFile) {
         if let Some(next) = workout.workout.steps.front() {
             self.current_step = next.clone();
+
             self.current_step_duration = Self::calculate_step_duration(&self.current_step);
             self.current_step_number += 1;
+
+            self.step_elapsed = Duration::from_secs(0);
+            self.step_started = Instant::now();
+
             self.next_step = workout.workout.steps.get(self.current_step_number).cloned();
         }
+    }
+
+    pub fn update_ts(&mut self, instant: Instant) {
+        self.step_elapsed = instant - self.step_started;
+        self.workout_elapsed = instant - self.workout_started;
     }
 
     pub(crate) fn new(workout: &WorkoutFile, ftp_base: f64) -> Self {
@@ -77,12 +96,16 @@ impl WorkoutState {
             total_steps,
             total_workout_duration,
             current_step_duration,
-            // Note it's 1-based for human reability!
+            // Note it's 1-based for human readability!
             current_step_number: 1,
             current_step,
             next_step,
             current_power_set: 0,
             ftp_base,
+            workout_elapsed: Duration::from_secs(0),
+            step_elapsed: Duration::from_secs(0),
+            workout_started: Instant::now(),
+            step_started: Instant::now()
         }
     }
 }
