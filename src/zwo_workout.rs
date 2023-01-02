@@ -21,7 +21,7 @@ pub struct ZwoWorkout {
     workout_file: WorkoutFile,
     pending: Pin<Box<Sleep>>,
     pub workout_state: WorkoutState,
-    current_step: WorkoutSteps,
+    pub current_step: WorkoutSteps,
 }
 
 impl ZwoWorkout {
@@ -65,6 +65,12 @@ impl ZwoWorkout {
         // if let Some(timer) = pending {
         //     timer.abort();
         // };
+    }
+
+    pub fn skip_step(&mut self) {
+        info!("Skipping step");
+        self.current_step.skip();
+        self.pending = Box::pin(tokio::time::sleep(Duration::from_secs(0)));
     }
 
     fn advance_workout(&mut self) -> Option<PowerDuration> {

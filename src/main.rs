@@ -22,6 +22,7 @@ use tokio::{sync::broadcast::Receiver, task, time::Instant};
 mod bk_gatts_service;
 mod ble_client;
 mod cli;
+mod common;
 mod front;
 mod indoor_bike_client;
 mod indoor_bike_data_defs;
@@ -29,7 +30,6 @@ mod scalar_converter;
 mod workout_state;
 mod zwo_workout;
 mod zwo_workout_file;
-mod common;
 
 #[macro_use]
 extern crate log;
@@ -78,6 +78,54 @@ async fn main() -> Result<()> {
         }
     };
 
+    // TEST:
+    tokio::spawn(async move {
+        //warmup
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+
+        // work
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+
+        // rest
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+
+        // work
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+
+        // rest
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+        // work
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+
+        // rest
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+        // work
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+
+        // rest
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+        // work
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+
+        // rest
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+
+        // cooldown
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+    });
+
     // Start workout task, will broadcast next steps
     let workout_join_handle = start_workout(
         trainer_commands_tx.clone(),
@@ -89,11 +137,11 @@ async fn main() -> Result<()> {
     .await?;
 
     // Tui shows current step + data from trainer
-    let tui_join_handle = tokio::spawn(front::tui::show(
-        workout_state_tx.subscribe(),
-        bike_notifications,
-        training_notifications,
-    ));
+    // let tui_join_handle = tokio::spawn(front::tui::show(
+    //     workout_state_tx.subscribe(),
+    //     bike_notifications,
+    //     training_notifications,
+    // ));
 
     if let Some(fit) = fit {
         control_fit_machine(fit, trainer_commands_tx.subscribe()).await?;
@@ -112,7 +160,7 @@ async fn main() -> Result<()> {
     };
 
     workout_join_handle.abort();
-    tui_join_handle.abort();
+    // tui_join_handle.abort();
 
     Ok(())
 }
@@ -144,6 +192,7 @@ async fn start_workout(
                                 workout.workout_state.current_step_number,
                                 workout.workout_state.total_steps);
 
+                            debug!("workout {:?}", workout.current_step);
                             trainer_commands_tx.send(command).unwrap();
                         }
                         None => {
@@ -153,6 +202,16 @@ async fn start_workout(
                         },
                     }
                 }
+                // TODO: this is a workaround, ideally there would be:
+                //
+                // Some(workout_state) = workout.workout_state.next() => {
+                //     workout_state_tx.send(workout.workout_state.clone()).unwrap();
+                // }
+                // But BC complains that mut borrow is already held on workout,
+                // figure something out here
+                // TODO: Arc? Gets immutable borrow Nope, RefCell? Nope will panic during runtime
+                // Mutex? Will deadlock
+                // Do subscribe to the channel from the workout state?
                 _ = propagate_workout_state.tick() => {
                     debug!("Broadcast workout state {}/{}",
                         workout.workout_state.current_step_number,
@@ -161,16 +220,11 @@ async fn start_workout(
                     workout.workout_state.update_ts();
                     workout_state_tx.send(workout.workout_state.clone()).unwrap();
                 }
-                // TODO: Arc? Nope, RefCell? Nope will panic during runtime
-                // Do subscribe to the channel from the workout state?
-                // Some(workout_state) = workout.workout_state.next() => {
-                //     workout_state_tx.send(workout.workout_state.clone()).unwrap();
-                // }
                 Some(control)  = control_workout_rx.recv() => {
                     match control {
                         WorkoutCommands::Pause=>workout.pause(),
                         WorkoutCommands::Resume=>todo!(),
-                        WorkoutCommands::SkipStep=>todo!(),
+                        WorkoutCommands::SkipStep=>workout.skip_step(),
                         WorkoutCommands::Abort => todo!(),
                     }
                 }

@@ -44,6 +44,20 @@ impl WorkoutSteps {
             WorkoutSteps::FreeRide(w) => w.advance(),
         }
     }
+
+    pub(crate) fn skip(&mut self) {
+        match self {
+            // Enforce next call to advance() will return None
+            WorkoutSteps::Warmup(w) => w.duration = 0,
+            WorkoutSteps::SteadyState(w) => w.duration = 0,
+            WorkoutSteps::Cooldown(w) => w.duration = 0,
+            WorkoutSteps::Ramp(w) => w.duration = 0,
+            WorkoutSteps::FreeRide(w) => w.duration = 0,
+            // In case of intervals, skip just the current part of it
+            // no need to change anything
+            WorkoutSteps::IntervalsT(_) => (),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
