@@ -76,7 +76,8 @@ impl WorkoutState {
         }
     }
 
-    pub fn update_ts(&mut self, instant: Instant) {
+    pub fn update_ts(&mut self) {
+        let instant = Instant::now();
         self.step_elapsed = instant - self.step_started;
         self.workout_elapsed = instant - self.workout_started;
     }

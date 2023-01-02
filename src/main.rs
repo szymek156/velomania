@@ -130,8 +130,8 @@ async fn start_workout(
     let handle = tokio::spawn(async move {
         debug!("spawning workout task");
 
-        let sleep = tokio::time::interval(Duration::from_secs(1));
-        tokio::pin!(sleep);
+        let propagate_workout_state = tokio::time::interval(Duration::from_secs(1));
+        tokio::pin!(propagate_workout_state);
 
         loop {
             tokio::select! {
@@ -153,12 +153,12 @@ async fn start_workout(
                         },
                     }
                 }
-                _ = sleep.tick() => {
+                _ = propagate_workout_state.tick() => {
                     debug!("Broadcast workout state {}/{}",
                         workout.workout_state.current_step_number,
                         workout.workout_state.total_steps);
 
-                    workout.workout_state.update_ts(Instant::now());
+                    workout.workout_state.update_ts();
                     workout_state_tx.send(workout.workout_state.clone()).unwrap();
                 }
                 // TODO: Arc? Nope, RefCell? Nope will panic during runtime
