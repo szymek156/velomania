@@ -9,7 +9,12 @@ use std::{
 use termion::raw::IntoRawMode;
 use tokio::sync::broadcast::Receiver;
 
-use crate::{indoor_bike_data_defs::BikeData, workout_state::WorkoutState};
+use crate::{
+    common::{duration_to_string, get_power},
+    indoor_bike_data_defs::BikeData,
+    workout_state::WorkoutState,
+    zwo_workout_file::WorkoutSteps,
+};
 
 pub async fn show(
     mut workout_rx: Receiver<WorkoutState>,
@@ -51,18 +56,18 @@ fn handle_workout_state(state: WorkoutState) {
     clear(start_row, start_row + nr_lines);
 
     let data_str =
-        format!("== WORKOUT STATE ==\n\rFTP base: {}\n\rcurrent power set: {}\n\rworkout duration: {} elapsed {} to go {}\n\rstep: {}/{}\n\rcurrent step: {:?}\n\rstep duration {} elapsed {} to go {}\n\rnext step: {:?}\n\r",
+        format!("== WORKOUT STATE ==\n\rFTP base: {}\n\rcurrent power set: {}W\n\rworkout duration: {} elapsed {} to go {}\n\rstep: {}/{}\n\rcurrent step: {}\n\rstep duration {} elapsed {} to go {}\n\rnext step: {}\n\r",
             state.ftp_base, state.current_power_set,
             duration_to_string(&state.total_workout_duration),
             duration_to_string(&state.workout_elapsed),
             duration_to_string(&state.total_workout_duration.saturating_sub(state.workout_elapsed)),
             state.current_step_number,
             state.total_steps,
-            state.current_step,
+            display_step(state.ftp_base, &Some(state.current_step)),
             duration_to_string(&state.current_step_duration),
             duration_to_string(&state.step_elapsed),
-            duration_to_string(&state.current_step_duration.saturating_sub(state.step_elapsed) ),
-            state.next_step);
+            duration_to_string(&state.current_step_duration.saturating_sub(state.step_elapsed)),
+            display_step(state.ftp_base, &state.next_step));
 
     let stdout = stdout();
 
@@ -152,31 +157,38 @@ fn clear_all() {
     stdout.flush().unwrap();
 }
 
-fn duration_to_string(duration: &Duration) -> String {
-    const HOUR_IN_SECONDS: u64 = 3600;
-    const MINUTE_IN_SECONDS: u64 = 60;
-
-    let secs = duration.as_secs();
-
-    let hours = secs / HOUR_IN_SECONDS;
-    let secs = secs % HOUR_IN_SECONDS;
-
-    let mins = secs / MINUTE_IN_SECONDS;
-    let secs = secs % MINUTE_IN_SECONDS;
-
-    let res = format!("{secs}s");
-
-    let res = if mins > 0 {
-        format!("{mins}m {res}")
+pub fn display_step(ftp_base: f64, step: &Option<WorkoutSteps>) -> String {
+    if let Some(step) = step {
+        match step {
+            WorkoutSteps::Warmup(s) => format!(
+                "Warmup: {}W -> {}W",
+                get_power(ftp_base, s.power_low),
+                get_power(ftp_base, s.power_high)
+            ),
+            WorkoutSteps::Ramp(s) => format!(
+                "Ramp: {}W -> {}W",
+                get_power(ftp_base, s.power_low),
+                get_power(ftp_base, s.power_high)
+            ),
+            WorkoutSteps::SteadyState(s) => {
+                format!("Steady State: {}W", get_power(ftp_base, s.power))
+            }
+            WorkoutSteps::Cooldown(s) => format!(
+                "Cool down: {}W -> {}W",
+                get_power(ftp_base, s.power_low),
+                get_power(ftp_base, s.power_high)
+            ),
+            WorkoutSteps::IntervalsT(s) => format!(
+                "Intervals: repeat {}, work {}W for {}, rest {}W for {}",
+                s.repeat,
+                get_power(ftp_base, s.on_power),
+                duration_to_string(&Duration::from_secs(s.on_duration)),
+                get_power(ftp_base, s.off_power),
+                duration_to_string(&Duration::from_secs(s.off_duration))
+            ),
+            WorkoutSteps::FreeRide(_) => format!("Free Ride",),
+        }
     } else {
-        res
-    };
-
-    let res = if hours > 0 {
-        format!("{hours}h {res}")
-    } else {
-        res
-    };
-
-    res
+        "None".to_string()
+    }
 }

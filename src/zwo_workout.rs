@@ -7,11 +7,12 @@ use tokio::{
     io::AsyncReadExt,
     pin,
     task::JoinHandle,
-    time::{self, Sleep, Instant},
+    time::{self, Instant, Sleep},
 };
 
 use crate::{
     cli::UserCommands,
+    common::get_power,
     workout_state::WorkoutState,
     zwo_workout_file::{PowerDuration, WorkoutFile, WorkoutSteps},
 };
@@ -92,14 +93,11 @@ impl ZwoWorkout {
         };
 
         if let Some(power_duration) = &next_pd {
-            self.workout_state.current_power_set = self.get_power(power_duration.power_level);
+            self.workout_state.current_power_set =
+                get_power(self.workout_state.ftp_base, power_duration.power_level);
         }
 
         next_pd
-    }
-
-    fn get_power(&self, power_level: f64) -> i16 {
-        (self.workout_state.ftp_base * power_level).round() as i16
     }
 }
 
@@ -122,7 +120,7 @@ impl Stream for ZwoWorkout {
                         self.pending = Box::pin(tokio::time::sleep(duration));
 
                         Poll::Ready(Some(UserCommands::SetTargetPower {
-                            power: self.get_power(power_level),
+                            power: get_power(self.workout_state.ftp_base, power_level),
                         }))
                     }
 

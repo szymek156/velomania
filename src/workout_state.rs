@@ -1,9 +1,12 @@
-use std::{task::Poll, time::Duration};
+use std::{fmt::Display, task::Poll, time::Duration};
 
 use futures::Stream;
 use tokio::time::Instant;
 
-use crate::zwo_workout_file::{WorkoutFile, WorkoutSteps};
+use crate::{
+    common::get_power,
+    zwo_workout_file::{WorkoutFile, WorkoutSteps},
+};
 
 #[derive(Debug, Clone)]
 pub struct WorkoutState {
@@ -105,7 +108,7 @@ impl WorkoutState {
             workout_elapsed: Duration::from_secs(0),
             step_elapsed: Duration::from_secs(0),
             workout_started: Instant::now(),
-            step_started: Instant::now()
+            step_started: Instant::now(),
         }
     }
 }

@@ -29,6 +29,7 @@ mod scalar_converter;
 mod workout_state;
 mod zwo_workout;
 mod zwo_workout_file;
+mod common;
 
 #[macro_use]
 extern crate log;
