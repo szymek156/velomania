@@ -72,7 +72,7 @@ impl WorkoutState {
             self.step_elapsed = Duration::from_secs(0);
             self.step_started = Instant::now();
 
-            self.next_step = workout.workout.steps.get(self.current_step_number).cloned();
+            self.next_step = workout.workout.steps.get(1).cloned();
         }
     }
 

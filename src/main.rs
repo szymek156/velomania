@@ -79,52 +79,52 @@ async fn main() -> Result<()> {
     };
 
     // TEST:
-    tokio::spawn(async move {
-        //warmup
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+    // tokio::spawn(async move {
+    //     //warmup
+    //     tokio::time::sleep(Duration::from_secs(3)).await;
+    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
 
-        // work
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+    //     // work
+    //     tokio::time::sleep(Duration::from_secs(3)).await;
+    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
 
-        // rest
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+    //     // rest
+    //     tokio::time::sleep(Duration::from_secs(3)).await;
+    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
 
-        // work
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+    //     // work
+    //     tokio::time::sleep(Duration::from_secs(3)).await;
+    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
 
-        // rest
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-        // work
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+    //     // rest
+    //     tokio::time::sleep(Duration::from_secs(3)).await;
+    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+    //     // work
+    //     tokio::time::sleep(Duration::from_secs(3)).await;
+    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
 
-        // rest
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-        // work
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+    //     // rest
+    //     tokio::time::sleep(Duration::from_secs(3)).await;
+    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+    //     // work
+    //     tokio::time::sleep(Duration::from_secs(3)).await;
+    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
 
-        // rest
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-        // work
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+    //     // rest
+    //     tokio::time::sleep(Duration::from_secs(3)).await;
+    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+    //     // work
+    //     tokio::time::sleep(Duration::from_secs(3)).await;
+    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
 
-        // rest
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+    //     // rest
+    //     tokio::time::sleep(Duration::from_secs(3)).await;
+    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
 
-        // cooldown
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-    });
+    //     // cooldown
+    //     tokio::time::sleep(Duration::from_secs(3)).await;
+    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
+    // });
 
     // Start workout task, will broadcast next steps
     let workout_join_handle = start_workout(
@@ -137,11 +137,11 @@ async fn main() -> Result<()> {
     .await?;
 
     // Tui shows current step + data from trainer
-    // let tui_join_handle = tokio::spawn(front::tui::show(
-    //     workout_state_tx.subscribe(),
-    //     bike_notifications,
-    //     training_notifications,
-    // ));
+    let tui_join_handle = tokio::spawn(front::tui::show(
+        workout_state_tx.subscribe(),
+        bike_notifications,
+        training_notifications,
+    ));
 
     if let Some(fit) = fit {
         control_fit_machine(fit, trainer_commands_tx.subscribe()).await?;
@@ -160,7 +160,7 @@ async fn main() -> Result<()> {
     };
 
     workout_join_handle.abort();
-    // tui_join_handle.abort();
+    tui_join_handle.abort();
 
     Ok(())
 }
