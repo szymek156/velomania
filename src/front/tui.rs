@@ -12,7 +12,7 @@ use tokio::sync::broadcast::Receiver;
 use crate::{
     common::{duration_to_string, get_power},
     indoor_bike_data_defs::BikeData,
-    workout_state::WorkoutState,
+    workout_state::{IntervalState, WorkoutState},
     zwo_workout_file::WorkoutSteps,
 };
 
@@ -56,17 +56,18 @@ fn handle_workout_state(state: WorkoutState) {
     clear(start_row, start_row + nr_lines);
 
     let data_str =
-        format!("== WORKOUT STATE ==\n\rFTP base: {}\n\rcurrent power set: {}W\n\rworkout duration: {} elapsed {} to go {}\n\rstep: {}/{}\n\rcurrent step: {}\n\rstep duration {} elapsed {} to go {}\n\rnext step: {}\n\r",
+        format!("== WORKOUT STATE ==\n\rFTP base: {}\n\rcurrent power set: {}W\n\rworkout duration: {} elapsed {} to go {}\n\rstep: {}/{}\n\rcurrent step: {}\n\rstep duration {} elapsed {} to go {}\n\r{}next step: {}\n\r",
             state.ftp_base, state.current_power_set,
             duration_to_string(&state.total_workout_duration),
             duration_to_string(&state.workout_elapsed),
             duration_to_string(&state.total_workout_duration.saturating_sub(state.workout_elapsed)),
             state.current_step_number,
             state.total_steps,
-            display_step(state.ftp_base, &Some(state.current_step)),
-            duration_to_string(&state.current_step_duration),
-            duration_to_string(&state.step_elapsed),
-            duration_to_string(&state.current_step_duration.saturating_sub(state.step_elapsed)),
+            display_step(state.ftp_base, &Some(state.current_step.step)),
+            duration_to_string(&state.current_step.duration),
+            duration_to_string(&state.current_step.elapsed),
+            duration_to_string(&state.current_step.duration.saturating_sub(state.current_step.elapsed)),
+            display_interval(&state.current_interval),
             display_step(state.ftp_base, &state.next_step));
 
     let stdout = stdout();
@@ -190,5 +191,25 @@ pub fn display_step(ftp_base: f64, step: &Option<WorkoutSteps>) -> String {
         }
     } else {
         "None".to_string()
+    }
+}
+
+pub fn display_interval(interval: &Option<IntervalState>) -> String {
+    if let Some(interval) = interval {
+        let interval_type = if interval.is_work_interval {
+            "WORK"
+        } else {
+            "REST"
+        };
+
+        format!(
+            "interval #{} {} elapsed {}, to go {}\n\r",
+            interval.repetition,
+            interval_type,
+            duration_to_string(&interval.elapsed),
+            duration_to_string(&interval.duration.saturating_sub(interval.elapsed))
+        )
+    } else {
+        "".to_string()
     }
 }

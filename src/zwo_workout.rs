@@ -14,7 +14,7 @@ use crate::{
     cli::UserCommands,
     common::get_power,
     workout_state::WorkoutState,
-    zwo_workout_file::{PowerDuration, WorkoutFile, WorkoutSteps},
+    zwo_workout_file::{IntervalsT, PowerDuration, WorkoutFile, WorkoutSteps},
 };
 
 pub struct ZwoWorkout {
@@ -75,19 +75,18 @@ impl ZwoWorkout {
 
     fn advance_workout(&mut self) -> Option<PowerDuration> {
         let next_pd = {
-            if let Some(next_step) = self.current_step.advance() {
+            if let Some(next_step) = self.advance_step() {
                 Some(next_step)
             } else {
                 // Current step exhausted, get next one
-                self.workout_state.update_state(&self.workout_file);
+                self.workout_state.handle_next_step(&self.workout_file);
 
                 if let Some(next) = self.workout_file.workout.steps.pop_front() {
                     // Start with next workout
                     self.current_step = next;
 
                     let next_pd = self
-                        .current_step
-                        .advance()
+                        .advance_step()
                         .expect("Cannot advance fresh workout step");
 
                     Some(next_pd)
@@ -104,6 +103,11 @@ impl ZwoWorkout {
         }
 
         next_pd
+    }
+
+    fn advance_step(&mut self) -> Option<PowerDuration> {
+        self.workout_state.handle_step_advance(&self.current_step);
+        self.current_step.advance()
     }
 }
 

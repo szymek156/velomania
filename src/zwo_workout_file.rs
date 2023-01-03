@@ -185,13 +185,19 @@ pub struct IntervalsT {
     pub current_interval: usize,
 }
 
+impl IntervalsT {
+    pub fn is_work_interval(&self) -> bool {
+        self.current_interval % 2 == 0
+    }
+}
+
 impl WorkoutStep for IntervalsT {
     fn advance(&mut self) -> Option<PowerDuration> {
         if self.repeat == 0 {
             return None;
         }
 
-        let step = if self.current_interval % 2 == 0 {
+        let step = if self.is_work_interval() {
             Some(PowerDuration {
                 duration: Duration::from_secs(self.on_duration),
                 power_level: self.on_power,

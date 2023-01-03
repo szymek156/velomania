@@ -9,24 +9,38 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
+pub struct StepState {
+    pub duration: Duration,
+    pub step: WorkoutSteps,
+    pub elapsed: Duration,
+    started: Instant,
+}
+
+#[derive(Debug, Clone)]
+pub struct IntervalState {
+    pub repetition: usize,
+    pub is_work_interval: bool,
+    pub elapsed: Duration,
+    pub duration: Duration,
+    started: Instant,
+}
+
+#[derive(Debug, Clone)]
 pub struct WorkoutState {
     pub total_steps: usize,
+    pub current_step_number: usize,
 
     pub total_workout_duration: Duration,
-    pub current_step_duration: Duration,
 
-    pub current_step_number: usize,
-    pub current_step: WorkoutSteps,
     pub next_step: Option<WorkoutSteps>,
 
     pub current_power_set: i16,
     pub ftp_base: f64,
 
+    pub current_step: StepState,
+    pub current_interval: Option<IntervalState>,
     pub workout_elapsed: Duration,
-    pub step_elapsed: Duration,
-
     workout_started: Instant,
-    step_started: Instant,
 }
 
 impl WorkoutState {
@@ -61,16 +75,57 @@ impl WorkoutState {
         total_workout_duration
     }
 
-    /// Sets workout step that is currently executed, together with workout state update
-    pub fn update_state(&mut self, workout: &WorkoutFile) {
-        if let Some(next) = workout.workout.steps.front() {
-            self.current_step = next.clone();
+    pub(crate) fn new(workout: &WorkoutFile, ftp_base: f64) -> Self {
+        let total_workout_duration = Self::calculate_total_workout_duration(&workout);
 
-            self.current_step_duration = Self::calculate_step_duration(&self.current_step);
+        let total_steps = workout.workout.steps.len();
+
+        let current_workout_step = workout
+            .workout
+            .steps
+            .get(0)
+            .expect("Workout does not contain any steps")
+            .clone();
+
+        let current_step = StepState {
+            duration: Self::calculate_step_duration(&current_workout_step),
+            step: current_workout_step,
+            elapsed: Duration::from_secs(0),
+            started: Instant::now(),
+        };
+
+        let next_step = workout.workout.steps.get(1).cloned();
+        Self {
+            total_steps,
+            total_workout_duration,
+            // Note it's 1-based for human readability!
+            current_step_number: 1,
+            current_step,
+            next_step,
+            current_interval: None,
+            current_power_set: 0,
+            ftp_base,
+            workout_elapsed: Duration::from_secs(0),
+            workout_started: Instant::now(),
+        }
+    }
+
+    /// Sets workout step that is currently executed, together with workout state update
+    pub fn handle_next_step(&mut self, workout: &WorkoutFile) {
+        if let Some(next) = workout.workout.steps.front() {
+            self.current_step.step = next.clone();
+
+            self.current_step.duration = Self::calculate_step_duration(&self.current_step.step);
             self.current_step_number += 1;
 
-            self.step_elapsed = Duration::from_secs(0);
-            self.step_started = Instant::now();
+            self.current_step.elapsed = Duration::from_secs(0);
+            self.current_step.started = Instant::now();
+
+            // Clear interval info if step is not interval
+            match self.current_step.step {
+                WorkoutSteps::IntervalsT(_) => (),
+                _ => self.current_interval = None
+            }
 
             self.next_step = workout.workout.steps.get(1).cloned();
         }
@@ -78,38 +133,29 @@ impl WorkoutState {
 
     pub fn update_ts(&mut self) {
         let instant = Instant::now();
-        self.step_elapsed = instant - self.step_started;
+        self.current_step.elapsed = instant - self.current_step.started;
         self.workout_elapsed = instant - self.workout_started;
+
+        if let Some(ref mut interval_state) = self.current_interval {
+            interval_state.elapsed = instant - interval_state.started;
+        }
     }
 
-    pub(crate) fn new(workout: &WorkoutFile, ftp_base: f64) -> Self {
-        let total_workout_duration = Self::calculate_total_workout_duration(&workout);
+    pub(crate) fn handle_step_advance(&mut self, current_step: &WorkoutSteps) {
+        if let WorkoutSteps::IntervalsT(interval) = current_step {
+            let interval_duration = if interval.is_work_interval() {
+                interval.on_duration
+            } else {
+                interval.off_duration
+            };
 
-        let total_steps = workout.workout.steps.len();
-
-        let current_step = workout
-            .workout
-            .steps
-            .get(0)
-            .expect("Workout does not contain any steps")
-            .clone();
-        let current_step_duration = Self::calculate_step_duration(&current_step);
-        let next_step = workout.workout.steps.get(1).cloned();
-
-        Self {
-            total_steps,
-            total_workout_duration,
-            current_step_duration,
-            // Note it's 1-based for human readability!
-            current_step_number: 1,
-            current_step,
-            next_step,
-            current_power_set: 0,
-            ftp_base,
-            workout_elapsed: Duration::from_secs(0),
-            step_elapsed: Duration::from_secs(0),
-            workout_started: Instant::now(),
-            step_started: Instant::now(),
+            self.current_interval = Some(IntervalState {
+                is_work_interval: interval.is_work_interval(),
+                repetition: interval.current_interval / 2 + 1,
+                elapsed: Duration::from_secs(0),
+                duration: Duration::from_secs(interval_duration),
+                started: Instant::now(),
+            })
         }
     }
 }
