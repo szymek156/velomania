@@ -124,7 +124,7 @@ impl WorkoutState {
             // Clear interval info if step is not interval
             match self.current_step.step {
                 WorkoutSteps::IntervalsT(_) => (),
-                _ => self.current_interval = None
+                _ => self.current_interval = None,
             }
 
             self.next_step = workout.workout.steps.get(1).cloned();
@@ -157,5 +157,18 @@ impl WorkoutState {
                 started: Instant::now(),
             })
         }
+    }
+
+    pub(crate) fn handle_skip_step(&mut self) {
+        let remaining_time = {
+            if let Some(interval) = &self.current_interval {
+                interval.duration.saturating_sub(interval.elapsed)
+            } else {
+                self.current_step
+                    .duration
+                    .saturating_sub(self.current_step.elapsed)
+            }
+        };
+        self.total_workout_duration = self.total_workout_duration.saturating_sub(remaining_time);
     }
 }

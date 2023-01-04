@@ -1,7 +1,9 @@
 #[macro_use]
 extern crate num_derive;
 use std::{
+    io,
     path::{Path, PathBuf},
+    thread,
     time::Duration,
 };
 
@@ -48,7 +50,7 @@ struct Args {
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let connect_to_trainer = false;
+    let connect_to_trainer = true;
 
     let opt = Args::from_args();
 
@@ -60,6 +62,7 @@ async fn main() -> Result<()> {
     let (control_workout_tx, control_workout_rx) = tokio::sync::mpsc::channel(16);
 
     register_signal_handler(trainer_commands_tx.clone());
+
 
     let (fit, bike_notifications, training_notifications) = {
         if connect_to_trainer {
@@ -78,54 +81,6 @@ async fn main() -> Result<()> {
         }
     };
 
-    // TEST:
-    // tokio::spawn(async move {
-    //     //warmup
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-
-    //     // work
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-
-    //     // rest
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-
-    //     // work
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-
-    //     // rest
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-    //     // work
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-
-    //     // rest
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-    //     // work
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-
-    //     // rest
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-    //     // work
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-
-    //     // rest
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-
-    //     // cooldown
-    //     tokio::time::sleep(Duration::from_secs(3)).await;
-    //     let _ = control_workout_tx.send(WorkoutCommands::SkipStep).await;
-    // });
-
     // Start workout task, will broadcast next steps
     let workout_join_handle = start_workout(
         trainer_commands_tx.clone(),
@@ -135,6 +90,8 @@ async fn main() -> Result<()> {
         opt.ftp_base,
     )
     .await?;
+
+    handle_user_input(control_workout_tx);
 
     // Tui shows current step + data from trainer
     let tui_join_handle = tokio::spawn(front::tui::show(
@@ -212,6 +169,8 @@ async fn start_workout(
                 // TODO: Arc? Gets immutable borrow Nope, RefCell? Nope will panic during runtime
                 // Mutex? Will deadlock
                 // Do subscribe to the channel from the workout state?
+                // Move workout state as separate actor, let workout communicate to state via channel
+                // to update it
                 _ = propagate_workout_state.tick() => {
                     debug!("Broadcast workout state {}/{}",
                         workout.workout_state.current_step_number,
@@ -225,7 +184,10 @@ async fn start_workout(
                         WorkoutCommands::Pause=>workout.pause(),
                         WorkoutCommands::Resume=>todo!(),
                         WorkoutCommands::SkipStep=>workout.skip_step(),
-                        WorkoutCommands::Abort => todo!(),
+                        WorkoutCommands::Abort => {
+                            trainer_commands_tx.send(UserCommands::Exit).unwrap();
+                            break;
+                        },
                     }
                 }
             }
@@ -304,4 +266,38 @@ async fn connect_to_fit() -> Result<IndoorBikeFitnessMachine> {
     let fit = IndoorBikeFitnessMachine::new(&ble).await?;
 
     Ok(fit)
+}
+
+pub fn handle_user_input(tx: tokio::sync::mpsc::Sender<WorkoutCommands>) {
+    // It's not recommended to handle user input using async.
+    // Spawn dedicated thread instead.
+
+    // dropped join handle detaches thread
+    thread::spawn(move || {
+        info!("Waiting for user input");
+        loop {
+            let mut buffer = String::new();
+            let res = io::stdin().read_line(&mut buffer);
+
+            if let Err(e) = res {
+                error!("Got error while reading stdin {e}, exiting");
+                tx.blocking_send(WorkoutCommands::Abort).unwrap();
+                break;
+            }
+
+            let input = buffer.trim().to_ascii_uppercase();
+
+            match input.as_str() {
+                "S" => {
+                    tx.blocking_send(WorkoutCommands::SkipStep).unwrap();
+                }
+                "Q" => {
+                    tx.blocking_send(WorkoutCommands::Abort).unwrap();
+                }
+                other @ _ => {
+                    warn!("Unexpected user input {other}");
+                }
+            }
+        }
+    });
 }

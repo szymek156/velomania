@@ -71,12 +71,13 @@ impl ZwoWorkout {
         info!("Skipping step");
         self.current_step.skip();
         self.pending = Box::pin(tokio::time::sleep(Duration::from_secs(0)));
+        self.workout_state.handle_skip_step();
     }
 
     fn advance_workout(&mut self) -> Option<PowerDuration> {
         let next_pd = {
-            if let Some(next_step) = self.advance_step() {
-                Some(next_step)
+            if let Some(next_pd) = self.advance_step() {
+                Some(next_pd)
             } else {
                 // Current step exhausted, get next one
                 self.workout_state.handle_next_step(&self.workout_file);
