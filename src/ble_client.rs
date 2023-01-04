@@ -68,7 +68,7 @@ impl BleClient {
                     let local_name = properties
                         .unwrap()
                         .local_name
-                        .unwrap_or(String::from("(peripheral name unknown)"));
+                        .unwrap_or_else(|| String::from("(peripheral name unknown)"));
 
                     debug!("DeviceDiscovered: {local_name} {id:?}, connected {is_connected}");
 
@@ -194,7 +194,7 @@ impl BleClient {
         let local_name = properties
             .unwrap()
             .local_name
-            .unwrap_or(String::from("(peripheral name unknown)"));
+            .unwrap_or_else(|| String::from("(peripheral name unknown)"));
 
         debug!("DeviceDiscovered: {local_name} {id:?}, connected {is_connected}");
 

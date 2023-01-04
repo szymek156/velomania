@@ -106,12 +106,9 @@ async fn main() -> Result<()> {
         // Listen for sigterm
         let mut rx = trainer_commands_tx.subscribe();
         while let Ok(message) = rx.recv().await {
-            match message {
-                UserCommands::Exit => {
-                    info!("Exit!");
-                    break;
-                }
-                _ => (),
+            if let UserCommands::Exit = message {
+                info!("Exit!");
+                break;
             }
         }
     };

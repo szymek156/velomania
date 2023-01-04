@@ -73,10 +73,10 @@ impl IndoorBikeFitnessMachine {
 
             // Get characteristic from the profile
             let feature = get_characteristic(&client, MACHINE_FEATURE)
-                .ok_or(anyhow!("feature char not found!"))?;
+                .ok_or_else(|| anyhow!("feature char not found!"))?;
 
             let control_point = get_characteristic(&client, CONTROL_POINT)
-                .ok_or(anyhow!("control point char not found!"))?;
+                .ok_or_else(|| anyhow!("control point char not found!"))?;
 
             let (indoor_bike_tx, training_tx, machine_tx, control_point_tx) =
                 subscribe_to_characteristics(&client).await?;
@@ -274,7 +274,7 @@ async fn subscribe_to_characteristics(
     ] {
         // TODO: now any of these is a fatal error, maybe don't be that picky
         let characteristic = get_characteristic(client, characteristic_uuid)
-            .ok_or(anyhow!("{characteristic_uuid:? }char not found!"))?;
+            .ok_or_else(|| anyhow!("{characteristic_uuid:? }char not found!"))?;
         // Enable listening on notification's
         client.subscribe(&characteristic).await?;
     }
@@ -304,7 +304,7 @@ async fn subscribe_to_characteristics(
 /// Gets range of valid power setting, data format defined in GATT_Specification_Supplement_v5
 async fn get_power_range(client: &Peripheral) -> Result<Range<i16, u16>> {
     let power = get_characteristic(client, SUPPORTED_POWER_RANGE)
-        .ok_or(anyhow!("supported power level char not found!"))?;
+        .ok_or_else(|| anyhow!("supported power level char not found!"))?;
 
     let raw = client.read(&power).await?;
 
@@ -325,7 +325,7 @@ async fn get_power_range(client: &Peripheral) -> Result<Range<i16, u16>> {
 /// field description in GATT_Specification_Supplement
 async fn get_resistance_range(client: &Peripheral) -> Result<Range<f64>> {
     let resistance = get_characteristic(client, SUPPORTED_RESISTANCE_LEVEL)
-        .ok_or(anyhow!("supported resistance level char not found!"))?;
+        .ok_or_else(|| anyhow!("supported resistance level char not found!"))?;
 
     let raw = client.read(&resistance).await?;
 

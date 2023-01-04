@@ -121,7 +121,7 @@ impl BkClient {
         let cmd_char = chars
             .iter()
             .find(|c| c.uuid == uuid)
-            .ok_or(anyhow!("Unable to find characteristic {uuid:?}"))?;
+            .ok_or_else(|| anyhow!("Unable to find characteristic {uuid:?}"))?;
 
         Ok(cmd_char.clone())
     }
