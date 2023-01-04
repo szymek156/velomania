@@ -9,7 +9,7 @@ use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
-pub const SERVICE_NAME: &'static str = "BK_GATTS";
+pub const SERVICE_NAME: &str = "BK_GATTS";
 const _SERVICE_UUID: Uuid = uuid_from_u16(0x00FF);
 const FILE_TRANS_UUID: Uuid = uuid_from_u16(0xFF01);
 const FILE_LIST_UUID: Uuid = uuid_from_u16(0xFF02);
@@ -123,6 +123,6 @@ impl BkClient {
             .find(|c| c.uuid == uuid)
             .ok_or(anyhow!("Unable to find characteristic {uuid:?}"))?;
 
-        return Ok(cmd_char.clone());
+        Ok(cmd_char.clone())
     }
 }

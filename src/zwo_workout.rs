@@ -5,16 +5,14 @@ use futures::{Future, Stream};
 
 use tokio::{
     io::AsyncReadExt,
-    pin,
-    task::JoinHandle,
-    time::{self, Instant, Sleep},
+    time::{Instant, Sleep},
 };
 
 use crate::{
     cli::UserCommands,
     common::get_power,
     workout_state::WorkoutState,
-    zwo_workout_file::{IntervalsT, PowerDuration, WorkoutFile, WorkoutSteps},
+    zwo_workout_file::{PowerDuration, WorkoutFile, WorkoutSteps},
 };
 
 pub struct ZwoWorkout {

@@ -1,7 +1,6 @@
 //! Smallest possible UI, uses termion, for more fancy stuff2 tui.rs can be used
 
 use std::{
-    fmt::format,
     io::{stdout, Write},
     time::Duration,
 };
@@ -187,7 +186,7 @@ pub fn display_step(ftp_base: f64, step: &Option<WorkoutSteps>) -> String {
                 get_power(ftp_base, s.off_power),
                 duration_to_string(&Duration::from_secs(s.off_duration))
             ),
-            WorkoutSteps::FreeRide(_) => format!("Free Ride",),
+            WorkoutSteps::FreeRide(_) => "Free Ride".to_string(),
         }
     } else {
         "None".to_string()

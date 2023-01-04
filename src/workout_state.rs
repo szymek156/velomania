@@ -1,10 +1,9 @@
-use std::{fmt::Display, task::Poll, time::Duration};
+use std::{time::Duration};
 
-use futures::Stream;
+
 use tokio::time::Instant;
 
 use crate::{
-    common::get_power,
     zwo_workout_file::{WorkoutFile, WorkoutSteps},
 };
 
@@ -46,7 +45,8 @@ pub struct WorkoutState {
 impl WorkoutState {
     /// Returns real time to spent on given workout step
     fn calculate_step_duration(workout_step: &WorkoutSteps) -> Duration {
-        let step_duration = {
+        
+        {
             let d = match workout_step {
                 WorkoutSteps::Warmup(x) => x.duration,
                 WorkoutSteps::Ramp(x) => x.duration,
@@ -57,8 +57,7 @@ impl WorkoutState {
             };
 
             Duration::from_secs(d)
-        };
-        step_duration
+        }
     }
 
     /// Total time this workout will take
@@ -76,7 +75,7 @@ impl WorkoutState {
     }
 
     pub(crate) fn new(workout: &WorkoutFile, ftp_base: f64) -> Self {
-        let total_workout_duration = Self::calculate_total_workout_duration(&workout);
+        let total_workout_duration = Self::calculate_total_workout_duration(workout);
 
         let total_steps = workout.workout.steps.len();
 

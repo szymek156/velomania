@@ -22,7 +22,7 @@ impl BleClient {
         let adapters = manager.adapters().await.unwrap();
 
         // Get first adapter
-        let adapter = adapters.into_iter().nth(0).unwrap();
+        let adapter = adapters.into_iter().next().unwrap();
 
         Self {
             adapter,

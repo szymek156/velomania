@@ -182,6 +182,6 @@ where
     T: PartialOrd,
 {
     pub(crate) fn in_range(&self, value: T) -> bool {
-        return value >= self.min && value <= self.max;
+        value >= self.min && value <= self.max
     }
 }

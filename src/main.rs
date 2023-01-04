@@ -19,7 +19,7 @@ use indoor_bike_client::IndoorBikeFitnessMachine;
 use indoor_bike_data_defs::ControlPointResult;
 use signal_hook::consts::signal::*;
 use signal_hook_async_std::Signals;
-use tokio::{sync::broadcast::Receiver, task, time::Instant};
+use tokio::{sync::broadcast::Receiver, task};
 
 mod bk_gatts_service;
 mod ble_client;
@@ -130,7 +130,7 @@ async fn start_workout(
     workout: &Path,
     ftp_base: f64,
 ) -> Result<tokio::task::JoinHandle<()>> {
-    let mut workout = ZwoWorkout::new(&workout, ftp_base).await?;
+    let mut workout = ZwoWorkout::new(workout, ftp_base).await?;
 
     let handle = tokio::spawn(async move {
         debug!("spawning workout task");
@@ -243,11 +243,11 @@ async fn control_fit_machine(
     Ok(())
 }
 
-fn register_signal_handler(tx: tokio::sync::broadcast::Sender<UserCommands>) -> () {
+fn register_signal_handler(tx: tokio::sync::broadcast::Sender<UserCommands>) {
     task::spawn(async move {
         info!("Signal handler waits for events");
 
-        let mut signals = Signals::new(&[SIGINT]).unwrap();
+        let mut signals = Signals::new([SIGINT]).unwrap();
 
         match signals.next().await {
             Some(sig) => {
@@ -294,7 +294,7 @@ pub fn handle_user_input(tx: tokio::sync::mpsc::Sender<WorkoutCommands>) {
                 "Q" => {
                     tx.blocking_send(WorkoutCommands::Abort).unwrap();
                 }
-                other @ _ => {
+                other => {
                     warn!("Unexpected user input {other}");
                 }
             }

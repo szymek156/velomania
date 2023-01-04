@@ -5,7 +5,7 @@ use std::pin::Pin;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
-use btleplug::api::bleuuid::uuid_from_u16;
+
 use btleplug::api::Characteristic;
 use btleplug::api::Peripheral as _;
 use btleplug::api::ValueNotification;
@@ -180,26 +180,26 @@ impl IndoorBikeFitnessMachine {
     /// To unsub, simply drop rx
     // TODO: let it be a string for now?
     pub fn subscribe_for_indoor_bike_notifications(&self) -> Receiver<BikeData> {
-        let rx = self.indoor_bike_tx.subscribe();
-        rx
+        
+        self.indoor_bike_tx.subscribe()
     }
 
     pub fn subscribe_for_training_notifications(&self) -> Receiver<String> {
-        let rx = self.training_tx.subscribe();
-        rx
+        
+        self.training_tx.subscribe()
     }
 
     pub fn subscribe_for_machine_notifications(&self) -> Receiver<String> {
-        let rx = self.machine_tx.subscribe();
-        rx
+        
+        self.machine_tx.subscribe()
     }
 
     pub fn subscribe_for_control_point_notifications(&self) -> Receiver<ControlPointNotificationData> {
-        let rx = self.control_point_tx.subscribe();
-        rx
+        
+        self.control_point_tx.subscribe()
     }
 
-    pub async fn set_resistance(&self, resistance: u8) -> Result<()> {
+    pub async fn set_resistance(&self, _resistance: u8) -> Result<()> {
         // if !self.resistance_range.in_range(resistance) {
         //     return Err(anyhow!("Resistance {resistance} outside valid range {:?}", self.resistance_range));
         // }
@@ -273,7 +273,7 @@ async fn subscribe_to_characteristics(
         CONTROL_POINT,
     ] {
         // TODO: now any of these is a fatal error, maybe don't be that picky
-        let characteristic = get_characteristic(&client, characteristic_uuid)
+        let characteristic = get_characteristic(client, characteristic_uuid)
             .ok_or(anyhow!("{characteristic_uuid:? }char not found!"))?;
         // Enable listening on notification's
         client.subscribe(&characteristic).await?;
@@ -303,7 +303,7 @@ async fn subscribe_to_characteristics(
 
 /// Gets range of valid power setting, data format defined in GATT_Specification_Supplement_v5
 async fn get_power_range(client: &Peripheral) -> Result<Range<i16, u16>> {
-    let power = get_characteristic(&client, SUPPORTED_POWER_RANGE)
+    let power = get_characteristic(client, SUPPORTED_POWER_RANGE)
         .ok_or(anyhow!("supported power level char not found!"))?;
 
     let raw = client.read(&power).await?;
@@ -324,7 +324,7 @@ async fn get_power_range(client: &Peripheral) -> Result<Range<i16, u16>> {
 /// Reads supported resistance level
 /// field description in GATT_Specification_Supplement
 async fn get_resistance_range(client: &Peripheral) -> Result<Range<f64>> {
-    let resistance = get_characteristic(&client, SUPPORTED_RESISTANCE_LEVEL)
+    let resistance = get_characteristic(client, SUPPORTED_RESISTANCE_LEVEL)
         .ok_or(anyhow!("supported resistance level char not found!"))?;
 
     let raw = client.read(&resistance).await?;
@@ -352,8 +352,8 @@ async fn get_resistance_range(client: &Peripheral) -> Result<Range<f64>> {
 async fn handle_notifications(
     mut notifications: Pin<Box<dyn Stream<Item = ValueNotification> + Send>>,
     indoor_tx: Sender<BikeData>,
-    training_tx: Sender<String>,
-    machine_tx: Sender<String>,
+    _training_tx: Sender<String>,
+    _machine_tx: Sender<String>,
     control_point_tx: Sender<ControlPointNotificationData>,
 ) {
     // TODO: when it returns none?
