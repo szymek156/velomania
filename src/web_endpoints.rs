@@ -17,9 +17,9 @@ async fn hello() -> impl Responder {
     "HAI"
 }
 
-/// Client needs to read the chunks per line
-#[get("/stream")]
-async fn workout_stream(app_state: Data<AppState>) -> HttpResponse {
+/// This is a stream endpoint, one line contains one workout state
+#[get("/workout_state")]
+async fn workout_state_handle(app_state: Data<AppState>) -> HttpResponse {
     let guard = app_state.workout_state_tx.read().unwrap();
 
     if let Some(workout_state) = guard.as_ref() {

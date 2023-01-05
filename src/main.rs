@@ -143,7 +143,7 @@ async fn main() -> Result<()> {
         App::new()
             .app_data(app_state.clone())
             .service(web_endpoints::hello)
-            .service(web_endpoints::workout_stream)
+            .service(web_endpoints::workout_state_handle)
     })
     .bind(("127.0.0.1", 2137))?
     .run()
@@ -231,7 +231,9 @@ async fn start_workout(
         }
 
         {
-            // Workout completed drop workout_state_tx
+            // Workout completed, drop workout_state_tx, so all receivers will close
+            // TODO: note if someone will clone workout_state_tx (which is possible - broadcast channel allows that)
+            // that will break the whole idea - streams would not be closed until all tx instances are not dropped
             let mut guard = app_state.workout_state_tx.write().unwrap();
             let _ = guard.take();
         }
