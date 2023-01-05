@@ -6,7 +6,7 @@ use std::{
 };
 
 use termion::raw::IntoRawMode;
-use tokio::sync::broadcast::Receiver;
+use tokio::sync::broadcast::{error::RecvError, Receiver};
 
 use crate::{
     common::{duration_to_string, get_power},
@@ -27,22 +27,31 @@ pub async fn show(
     {
         loop {
             tokio::select! {
-                state = workout_rx.recv() => {
-                    handle_workout_state(state.unwrap());
+                Ok(state) = workout_rx.recv() =>{
+                    handle_workout_state(state);
+                    // TODO: handle workout finished
+                },
+                Ok(bike_data) = indoor_bike_notif.recv() => {
+                    handle_bike_data(bike_data);
                 }
-                bike_data = indoor_bike_notif.recv() => {
-                    handle_bike_data(bike_data.unwrap());
+                Ok(training_data) = training_notif.recv() => {
+                    handle_training_data(training_data);
                 }
-                training_data = training_notif.recv() => {
-                    handle_training_data(training_data.unwrap());
+                else => {
+                    warn!("None of the streams are available, leaving tui task");
+                    break;
                 }
             }
         }
     } else {
         loop {
             tokio::select! {
-                state = workout_rx.recv() => {
-                    handle_workout_state(state.unwrap());
+                Ok(state) = workout_rx.recv() => {
+                    handle_workout_state(state);
+                }
+                else => {
+                    warn!("None of the streams are available, leaving tui task");
+                    break;
                 }
             }
         }

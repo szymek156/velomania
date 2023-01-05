@@ -61,7 +61,7 @@ struct AppState {
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let connect_to_trainer = false;
+    let connect_to_trainer = true;
 
     let opt = Args::from_args();
 
@@ -107,12 +107,13 @@ async fn main() -> Result<()> {
 
     handle_user_input(control_workout_tx);
 
+
     // Tui shows current step + data from trainer
-    // let tui_join_handle = tokio::spawn(front::tui::show(
-    //     workout_state_tx.subscribe(),
-    //     bike_notifications,
-    //     training_notifications,
-    // ));
+    let tui_join_handle = tokio::spawn(front::tui::show(
+        _rx,
+        bike_notifications,
+        training_notifications,
+    ));
 
     tokio::spawn(async move {
         if let Some(fit) = fit {
@@ -131,7 +132,7 @@ async fn main() -> Result<()> {
         };
 
         workout_join_handle.abort();
-        // tui_join_handle.abort();
+        tui_join_handle.abort();
     });
 
     HttpServer::new(move || {
