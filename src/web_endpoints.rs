@@ -1,16 +1,8 @@
-use std::{sync::Arc, time::Duration};
+use crate::AppState;
+use actix_web::{get, web::Data, HttpResponse, Responder};
+use futures::stream::StreamExt;
 
-use crate::{
-    workout_state::{PoorWorkoutState, WorkoutState, self},
-    AppState,
-};
-use actix_web::{get, web::Data, Error, HttpResponse, Responder};
-use futures::{
-    future::ok,
-    stream::{self, once, StreamExt},
-};
-use tokio::sync::broadcast::{Receiver, Sender};
-use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
+use tokio_stream::wrappers::BroadcastStream;
 
 #[get("/hello")]
 async fn hello() -> impl Responder {
@@ -34,9 +26,7 @@ async fn workout_state_handle(app_state: Data<AppState>) -> HttpResponse {
         HttpResponse::Ok()
             // .content_type("application/json")
             .streaming(stream)
-
     } else {
         HttpResponse::BadRequest().finish()
     }
-
 }

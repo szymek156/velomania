@@ -47,54 +47,11 @@ pub struct WorkoutState {
 }
 
 
-#[derive(Debug, Clone, Serialize)]
-pub struct PoorWorkoutState {
-    pub total_steps: usize,
-    pub current_step_number: usize,
-
-    pub total_workout_duration: Duration,
-
-    pub next_step: Option<WorkoutSteps>,
-
-    pub current_power_set: i16,
-    pub ftp_base: f64,
-    pub workout_elapsed: Duration,
-}
 
 impl WorkoutState {
-    /// Returns real time to spent on given workout step
-    fn calculate_step_duration(workout_step: &WorkoutSteps) -> Duration {
-
-        {
-            let d = match workout_step {
-                WorkoutSteps::Warmup(x) => x.duration,
-                WorkoutSteps::Ramp(x) => x.duration,
-                WorkoutSteps::SteadyState(x) => x.duration,
-                WorkoutSteps::Cooldown(x) => x.duration,
-                WorkoutSteps::IntervalsT(x) => (x.on_duration + x.off_duration) * x.repeat,
-                WorkoutSteps::FreeRide(x) => x.duration,
-            };
-
-            Duration::from_secs(d)
-        }
-    }
-
-    /// Total time this workout will take
-    fn calculate_total_workout_duration(workout: &WorkoutFile) -> Duration {
-        let total_workout_duration = {
-            workout
-                .workout
-                .steps
-                .iter()
-                .fold(Duration::from_secs(0), |acc, step| {
-                    acc + Self::calculate_step_duration(step)
-                })
-        };
-        total_workout_duration
-    }
 
     pub(crate) fn new(workout: &WorkoutFile, ftp_base: f64) -> Self {
-        let total_workout_duration = Self::calculate_total_workout_duration(workout);
+        let total_workout_duration = workout.total_workout_duration;
 
         let total_steps = workout.workout.steps.len();
 
@@ -106,7 +63,7 @@ impl WorkoutState {
             .clone();
 
         let current_step = StepState {
-            duration: Self::calculate_step_duration(&current_workout_step),
+            duration: current_workout_step.get_step_duration(),
             step: current_workout_step,
             elapsed: Duration::from_secs(0),
             started: Instant::now(),
@@ -133,7 +90,7 @@ impl WorkoutState {
         if let Some(next) = workout.workout.steps.front() {
             self.current_step.step = next.clone();
 
-            self.current_step.duration = Self::calculate_step_duration(&self.current_step.step);
+            self.current_step.duration = self.current_step.step.get_step_duration();
             self.current_step_number += 1;
 
             self.current_step.elapsed = Duration::from_secs(0);

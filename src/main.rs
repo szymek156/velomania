@@ -61,7 +61,7 @@ struct AppState {
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let connect_to_trainer = true;
+    let connect_to_trainer = false;
 
     let opt = Args::from_args();
 

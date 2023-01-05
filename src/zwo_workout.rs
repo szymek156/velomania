@@ -1,12 +1,9 @@
 use std::{path::Path, pin::Pin, task::Poll, time::Duration};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use futures::{Future, Stream};
 
-use tokio::{
-    io::AsyncReadExt,
-    time::{Instant, Sleep},
-};
+use tokio::time::{Instant, Sleep};
 
 use crate::{
     cli::UserCommands,
@@ -24,19 +21,7 @@ pub struct ZwoWorkout {
 
 impl ZwoWorkout {
     pub(crate) async fn new(workout_path: &Path, ftp_base: f64) -> Result<Self> {
-        let mut file = tokio::fs::File::open(workout_path).await?;
-
-        let mut content = String::new();
-        let _read = file
-            .read_to_string(&mut content)
-            .await
-            .context("Reading xml to String failed")?;
-
-        let mut workout: WorkoutFile = serde_xml_rs::from_str(&content)
-            .context("Parsing xml string to Workouts struct failed")?;
-        trace!("Parsed xml {workout:#?}");
-
-        info!("Loaded {}", workout_path.display());
+        let mut workout = WorkoutFile::new(workout_path).await?;
 
         let workout_state = WorkoutState::new(&workout, ftp_base);
 

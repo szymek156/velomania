@@ -1,6 +1,8 @@
-use std::{collections::VecDeque, time::Duration};
+use std::{collections::VecDeque, path::Path, time::Duration};
 
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
+use tokio::io::AsyncReadExt;
 
 // XML schema definition
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -11,12 +13,47 @@ pub struct WorkoutFile {
     pub description: String,
     pub sport_type: String,
     pub workout: Workout,
+
+    #[serde(skip)]
+    pub total_workout_duration: Duration,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Workout {
     #[serde(rename = "$value")]
     pub steps: VecDeque<WorkoutSteps>,
+}
+impl WorkoutFile {
+    pub async fn new(workout_path: &Path) -> anyhow::Result<Self> {
+        let mut file = tokio::fs::File::open(workout_path).await?;
+
+        let mut content = String::new();
+        let _read = file
+            .read_to_string(&mut content)
+            .await
+            .context("Reading xml to String failed")?;
+
+        let mut workout: WorkoutFile = serde_xml_rs::from_str(&content)
+            .context("Parsing xml string to Workouts struct failed")?;
+        trace!("Parsed xml {workout:#?}");
+
+        info!("Loaded {}", workout_path.display());
+
+        workout.total_workout_duration = Self::remaining_workout_duration(&workout.workout);
+        Ok(workout)
+    }
+
+    fn remaining_workout_duration(workout: &Workout) -> Duration {
+        let total_workout_duration = {
+            workout
+                .steps
+                .iter()
+                .fold(Duration::from_secs(0), |acc, step| {
+                    acc + step.get_step_duration()
+                })
+        };
+        total_workout_duration
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -57,6 +94,19 @@ impl WorkoutSteps {
             // no need to change anything
             WorkoutSteps::IntervalsT(_) => (),
         }
+    }
+
+    pub(crate) fn get_step_duration(&self) -> Duration {
+        let secs = match self {
+            WorkoutSteps::Warmup(w) => w.duration,
+            WorkoutSteps::Ramp(w) => w.duration,
+            WorkoutSteps::SteadyState(w) => w.duration,
+            WorkoutSteps::Cooldown(w) => w.duration,
+            WorkoutSteps::IntervalsT(w) => w.repeat * (w.off_duration + w.on_duration),
+            WorkoutSteps::FreeRide(w) => w.duration,
+        };
+
+        Duration::from_secs(secs)
     }
 }
 

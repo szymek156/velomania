@@ -63,8 +63,16 @@ fn handle_workout_state(state: WorkoutState) {
     let nr_lines = 9;
     clear(start_row, start_row + nr_lines);
 
+    let next_step_duration = {
+        if let Some(next) = &state.next_step  {
+            duration_to_string(&next.get_step_duration())
+        } else {
+            "--".to_string()
+        }
+    };
+
     let data_str =
-        format!("== WORKOUT STATE ==\n\rFTP base: {}\n\rcurrent power set: {}W\n\rworkout duration: {} elapsed {} to go {}\n\rstep: {}/{}\n\rcurrent step: {}\n\rstep duration {} elapsed {} to go {}\n\r{}next step: {}\n\r",
+        format!("== WORKOUT STATE ==\n\rFTP base: {}\n\rcurrent power set: {}W\n\rworkout duration: {} elapsed {} to go {}\n\rstep: {}/{}\n\rcurrent step: {}\n\rstep duration {} elapsed {} to go {}\n\r{}next step: {} for {}\n\r",
             state.ftp_base, state.current_power_set,
             duration_to_string(&state.total_workout_duration),
             duration_to_string(&state.workout_elapsed),
@@ -76,7 +84,9 @@ fn handle_workout_state(state: WorkoutState) {
             duration_to_string(&state.current_step.elapsed),
             duration_to_string(&state.current_step.duration.saturating_sub(state.current_step.elapsed)),
             display_interval(&state.current_interval),
-            display_step(state.ftp_base, &state.next_step));
+            display_step(state.ftp_base, &state.next_step),
+            next_step_duration,
+        );
 
     let stdout = stdout();
 
