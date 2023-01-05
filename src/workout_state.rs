@@ -1,30 +1,33 @@
 use std::{time::Duration};
 
 
+use serde::Serialize;
 use tokio::time::Instant;
 
 use crate::{
     zwo_workout_file::{WorkoutFile, WorkoutSteps},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StepState {
     pub duration: Duration,
     pub step: WorkoutSteps,
     pub elapsed: Duration,
+    #[serde(skip)]
     started: Instant,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct IntervalState {
     pub repetition: usize,
     pub is_work_interval: bool,
     pub elapsed: Duration,
     pub duration: Duration,
+    #[serde(skip)]
     started: Instant,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct WorkoutState {
     pub total_steps: usize,
     pub current_step_number: usize,
@@ -39,13 +42,29 @@ pub struct WorkoutState {
     pub current_step: StepState,
     pub current_interval: Option<IntervalState>,
     pub workout_elapsed: Duration,
+    #[serde(skip)]
     workout_started: Instant,
+}
+
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PoorWorkoutState {
+    pub total_steps: usize,
+    pub current_step_number: usize,
+
+    pub total_workout_duration: Duration,
+
+    pub next_step: Option<WorkoutSteps>,
+
+    pub current_power_set: i16,
+    pub ftp_base: f64,
+    pub workout_elapsed: Duration,
 }
 
 impl WorkoutState {
     /// Returns real time to spent on given workout step
     fn calculate_step_duration(workout_step: &WorkoutSteps) -> Duration {
-        
+
         {
             let d = match workout_step {
                 WorkoutSteps::Warmup(x) => x.duration,

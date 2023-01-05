@@ -3,10 +3,12 @@ extern crate num_derive;
 use std::{
     io,
     path::{Path, PathBuf},
+    sync::RwLock,
     thread,
     time::Duration,
 };
 
+use actix_web::{App, HttpServer};
 use structopt::StructOpt;
 use workout_state::WorkoutState;
 use zwo_workout::ZwoWorkout;
@@ -19,7 +21,10 @@ use indoor_bike_client::IndoorBikeFitnessMachine;
 use indoor_bike_data_defs::ControlPointResult;
 use signal_hook::consts::signal::*;
 use signal_hook_async_std::Signals;
-use tokio::{sync::broadcast::Receiver, task};
+use tokio::{
+    sync::broadcast::{Receiver, Sender},
+    task,
+};
 
 mod bk_gatts_service;
 mod ble_client;
@@ -29,6 +34,7 @@ mod front;
 mod indoor_bike_client;
 mod indoor_bike_data_defs;
 mod scalar_converter;
+mod web_endpoints;
 mod workout_state;
 mod zwo_workout;
 mod zwo_workout_file;
@@ -46,11 +52,16 @@ struct Args {
     ftp_base: f64,
 }
 
-#[tokio::main]
+struct AppState {
+    workout_state_tx: RwLock<Option<Sender<WorkoutState>>>,
+}
+
+// TODO: why not tokio::main?
+#[actix_web::main]
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let connect_to_trainer = true;
+    let connect_to_trainer = false;
 
     let opt = Args::from_args();
 
@@ -58,11 +69,14 @@ async fn main() -> Result<()> {
     let (trainer_commands_tx, _command_rx) = tokio::sync::broadcast::channel(16);
     let (workout_state_tx, _rx) = tokio::sync::broadcast::channel(16);
 
+    let app_state = actix_web::web::Data::new(AppState {
+        workout_state_tx: RwLock::new(Some(workout_state_tx)),
+    });
+
     // Channel used to control workout, skip step, pause
     let (control_workout_tx, control_workout_rx) = tokio::sync::mpsc::channel(16);
 
     register_signal_handler(trainer_commands_tx.clone());
-
 
     let (fit, bike_notifications, training_notifications) = {
         if connect_to_trainer {
@@ -84,7 +98,7 @@ async fn main() -> Result<()> {
     // Start workout task, will broadcast next steps
     let workout_join_handle = start_workout(
         trainer_commands_tx.clone(),
-        workout_state_tx.clone(),
+        app_state.clone(),
         control_workout_rx,
         opt.workout.as_path(),
         opt.ftp_base,
@@ -94,27 +108,46 @@ async fn main() -> Result<()> {
     handle_user_input(control_workout_tx);
 
     // Tui shows current step + data from trainer
-    let tui_join_handle = tokio::spawn(front::tui::show(
-        workout_state_tx.subscribe(),
-        bike_notifications,
-        training_notifications,
-    ));
+    // let tui_join_handle = tokio::spawn(front::tui::show(
+    //     workout_state_tx.subscribe(),
+    //     bike_notifications,
+    //     training_notifications,
+    // ));
 
-    if let Some(fit) = fit {
-        control_fit_machine(fit, trainer_commands_tx.subscribe()).await?;
-    } else {
-        // Listen for sigterm
-        let mut rx = trainer_commands_tx.subscribe();
-        while let Ok(message) = rx.recv().await {
-            if let UserCommands::Exit = message {
-                info!("Exit!");
-                break;
+    tokio::spawn(async move {
+        if let Some(fit) = fit {
+            control_fit_machine(fit, trainer_commands_tx.subscribe())
+                .await
+                .unwrap();
+        } else {
+            // Listen for sigterm
+            let mut rx = trainer_commands_tx.subscribe();
+            while let Ok(message) = rx.recv().await {
+                if let UserCommands::Exit = message {
+                    info!("Exit!");
+                    break;
+                }
             }
-        }
-    };
+        };
 
-    workout_join_handle.abort();
-    tui_join_handle.abort();
+        workout_join_handle.abort();
+        // tui_join_handle.abort();
+    });
+
+    HttpServer::new(move || {
+        // HttpServer accepts an application factory rather than an application instance.
+        // An HttpServer constructs an application instance for EACH thread.
+        // Therefore, application data must be constructed multiple times.
+        // If you want to share data between different threads,
+        // a shareable object should be used, e.g. Send + Sync.
+        App::new()
+            .app_data(app_state.clone())
+            .service(web_endpoints::hello)
+            .service(web_endpoints::workout_stream)
+    })
+    .bind(("127.0.0.1", 2137))?
+    .run()
+    .await?;
 
     Ok(())
 }
@@ -122,7 +155,7 @@ async fn main() -> Result<()> {
 /// Reads ZWO file, and sends commands according to it
 async fn start_workout(
     trainer_commands_tx: tokio::sync::broadcast::Sender<UserCommands>,
-    workout_state_tx: tokio::sync::broadcast::Sender<WorkoutState>,
+    app_state: actix_web::web::Data<AppState>,
     mut control_workout_rx: tokio::sync::mpsc::Receiver<WorkoutCommands>,
     workout: &Path,
     ftp_base: f64,
@@ -134,6 +167,12 @@ async fn start_workout(
 
         let propagate_workout_state = tokio::time::interval(Duration::from_secs(1));
         tokio::pin!(propagate_workout_state);
+
+        let workout_state_tx = {
+            let guard = app_state.workout_state_tx.read().unwrap();
+
+            guard.as_ref().cloned().unwrap()
+        };
 
         loop {
             tokio::select! {
@@ -152,6 +191,7 @@ async fn start_workout(
                         None => {
                             debug!("No more steps in workout, workout task exits");
                             trainer_commands_tx.send(UserCommands::Exit).unwrap();
+
                             break;
                         },
                     }
@@ -188,6 +228,12 @@ async fn start_workout(
                     }
                 }
             }
+        }
+
+        {
+            // Workout completed drop workout_state_tx
+            let mut guard = app_state.workout_state_tx.write().unwrap();
+            let _ = guard.take();
         }
     });
 
