@@ -1,5 +1,12 @@
-use crate::AppState;
-use actix_web::{get, web::Data, HttpResponse, Responder};
+use std::time::Instant;
+
+use crate::{workout_state_ws::WebSocketActor, AppState};
+use actix_web::{
+    get,
+    web::{self, Data},
+    Error, HttpRequest, HttpResponse, Responder,
+};
+use actix_web_actors::ws;
 use futures::stream::StreamExt;
 
 use tokio_stream::wrappers::BroadcastStream;
@@ -31,5 +38,32 @@ async fn workout_state_handle(app_state: Data<AppState>) -> HttpResponse {
             .streaming(stream)
     } else {
         HttpResponse::BadRequest().finish()
+    }
+}
+
+/// Opens a persistent connection with the client, provides all the data, workout state, trainer status
+/// and accepts commands
+#[get("/ws")]
+async fn web_socket_handle(
+    req: HttpRequest,
+    stream: web::Payload,
+    app_state: Data<AppState>,
+) -> Result<HttpResponse, Error> {
+    let guard = app_state.workout_state_tx.read().unwrap();
+
+    if let Some(workout_state) = guard.as_ref() {
+        let workout_state_rx = workout_state.subscribe();
+
+        let actor = WebSocketActor {
+            workout_state_rx,
+            control_workout_tx: app_state.control_workout_tx.clone(),
+            hb: Instant::now(),
+        };
+
+        info!("starting WS actor");
+        // Performs ws handshake, and starts the actor
+        ws::start(actor, &req, stream)
+    } else {
+        Ok(HttpResponse::BadRequest().finish())
     }
 }

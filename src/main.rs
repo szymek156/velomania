@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use actix_web::{App, HttpServer};
+use actix_web::{middleware, App, HttpServer};
 use rustls::{Certificate, PrivateKey, ServerConfig};
 use rustls_pemfile::{certs, pkcs8_private_keys};
 use structopt::StructOpt;
@@ -25,7 +25,7 @@ use indoor_bike_data_defs::ControlPointResult;
 use signal_hook::consts::signal::*;
 use signal_hook_async_std::Signals;
 use tokio::{
-    sync::broadcast::{Receiver, Sender},
+    sync::{broadcast, mpsc},
     task,
 };
 
@@ -39,9 +39,9 @@ mod indoor_bike_data_defs;
 mod scalar_converter;
 mod web_endpoints;
 mod workout_state;
+mod workout_state_ws;
 mod zwo_workout;
 mod zwo_workout_file;
-
 #[macro_use]
 extern crate log;
 
@@ -56,7 +56,8 @@ struct Args {
 }
 
 struct AppState {
-    workout_state_tx: RwLock<Option<Sender<WorkoutState>>>,
+    workout_state_tx: RwLock<Option<broadcast::Sender<WorkoutState>>>,
+    control_workout_tx: mpsc::Sender<WorkoutCommands>,
 }
 
 // TODO: why not tokio::main?
@@ -72,12 +73,13 @@ async fn main() -> Result<()> {
     let (trainer_commands_tx, _command_rx) = tokio::sync::broadcast::channel(16);
     let (workout_state_tx, _rx) = tokio::sync::broadcast::channel(16);
 
-    let app_state = actix_web::web::Data::new(AppState {
-        workout_state_tx: RwLock::new(Some(workout_state_tx)),
-    });
-
     // Channel used to control workout, skip step, pause
     let (control_workout_tx, control_workout_rx) = tokio::sync::mpsc::channel(16);
+
+    let app_state = actix_web::web::Data::new(AppState {
+        workout_state_tx: RwLock::new(Some(workout_state_tx)),
+        control_workout_tx,
+    });
 
     register_signal_handler(trainer_commands_tx.clone());
 
@@ -108,7 +110,7 @@ async fn main() -> Result<()> {
     )
     .await?;
 
-    handle_user_input(control_workout_tx);
+    handle_user_input(app_state.control_workout_tx.clone());
 
     // Tui shows current step + data from trainer
     // let tui_join_handle = tokio::spawn(front::tui::show(
@@ -149,12 +151,15 @@ async fn main() -> Result<()> {
         // If you want to share data between different threads,
         // a shareable object should be used, e.g. Send + Sync.
         App::new()
+            .wrap(middleware::Logger::default())
             .app_data(app_state.clone())
             .service(web_endpoints::hello)
             .service(web_endpoints::workout_state_handle)
+            .service(web_endpoints::web_socket_handle)
     })
-    .bind_rustls(("127.0.0.1", 2137), tls_conf)?
-    // .bind(("127.0.0.1", 2137))?
+    // TODO: wss does not work for some reason
+    // .bind_rustls(("127.0.0.1", 2137), tls_conf)?
+    .bind(("127.0.0.1", 2137))?
     .run()
     .await?;
 
@@ -285,7 +290,7 @@ async fn start_workout(
 /// Gets the commands (may be ZWO workout, or user input), and passes them to the fitness machine
 async fn control_fit_machine(
     fit: IndoorBikeFitnessMachine,
-    mut rx: Receiver<UserCommands>,
+    mut rx: broadcast::Receiver<UserCommands>,
 ) -> Result<()> {
     // Cannot set return type of async block, async closures are unstable
 
