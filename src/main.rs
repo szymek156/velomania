@@ -1,7 +1,8 @@
 #[macro_use]
 extern crate num_derive;
 use std::{
-    io,
+    fs::File,
+    io::{self, BufReader},
     path::{Path, PathBuf},
     sync::RwLock,
     thread,
@@ -9,6 +10,8 @@ use std::{
 };
 
 use actix_web::{App, HttpServer};
+use rustls::{Certificate, PrivateKey, ServerConfig};
+use rustls_pemfile::{certs, pkcs8_private_keys};
 use structopt::StructOpt;
 use workout_state::WorkoutState;
 use zwo_workout::ZwoWorkout;
@@ -107,13 +110,12 @@ async fn main() -> Result<()> {
 
     handle_user_input(control_workout_tx);
 
-
     // Tui shows current step + data from trainer
-    let tui_join_handle = tokio::spawn(front::tui::show(
-        _rx,
-        bike_notifications,
-        training_notifications,
-    ));
+    // let tui_join_handle = tokio::spawn(front::tui::show(
+    //     _rx,
+    //     bike_notifications,
+    //     training_notifications,
+    // ));
 
     tokio::spawn(async move {
         if let Some(fit) = fit {
@@ -132,8 +134,13 @@ async fn main() -> Result<()> {
         };
 
         workout_join_handle.abort();
-        tui_join_handle.abort();
+        // tui_join_handle.abort();
     });
+
+    // Use HTTPS in order to upgrade to HTTP/2 - done automagically when possible by actix,
+    // In actix-web H2C (HTTP2 without HTTPS) is not supported,
+    // there is an issue opened for it for quite some time
+    let tls_conf = load_rustls_config();
 
     HttpServer::new(move || {
         // HttpServer accepts an application factory rather than an application instance.
@@ -146,11 +153,43 @@ async fn main() -> Result<()> {
             .service(web_endpoints::hello)
             .service(web_endpoints::workout_state_handle)
     })
-    .bind(("127.0.0.1", 2137))?
+    .bind_rustls(("127.0.0.1", 2137), tls_conf)?
+    // .bind(("127.0.0.1", 2137))?
     .run()
     .await?;
 
     Ok(())
+}
+
+fn load_rustls_config() -> rustls::ServerConfig {
+    // init server config builder with safe defaults
+    let config = ServerConfig::builder()
+        .with_safe_defaults()
+        .with_no_client_auth();
+
+    // load TLS key/cert files
+    let cert_file = &mut BufReader::new(File::open("tls/cert.pem").unwrap());
+    let key_file = &mut BufReader::new(File::open("tls/key.pem").unwrap());
+
+    // convert files to key/cert objects
+    let cert_chain = certs(cert_file)
+        .unwrap()
+        .into_iter()
+        .map(Certificate)
+        .collect();
+    let mut keys: Vec<PrivateKey> = pkcs8_private_keys(key_file)
+        .unwrap()
+        .into_iter()
+        .map(PrivateKey)
+        .collect();
+
+    // exit if no keys could be parsed
+    if keys.is_empty() {
+        eprintln!("Could not locate PKCS 8 private keys.");
+        std::process::exit(1);
+    }
+
+    config.with_single_cert(cert_chain, keys.remove(0)).unwrap()
 }
 
 /// Reads ZWO file, and sends commands according to it
