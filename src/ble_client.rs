@@ -139,6 +139,7 @@ impl BleClient {
         Ok(None)
     }
 
+    #[allow(dead_code)]
     /// Currently this function is only for testing purposes
     pub async fn connect_to_bc(&mut self) -> Result<()> {
         // start scanning for devices

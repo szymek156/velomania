@@ -338,12 +338,14 @@ pub fn handle_user_input(tx: tokio::sync::mpsc::Sender<WorkoutCommands>) {
                     tx.blocking_send(WorkoutCommands::SkipStep).unwrap();
                 }
                 "Q" => {
-                    tx.blocking_send(WorkoutCommands::Abort).unwrap();
+                    let _ = tx.blocking_send(WorkoutCommands::Abort);
+                    break;
                 }
                 other => {
                     warn!("Unexpected user input {other}");
                 }
             }
         }
+        info!("Waiting for user input leaves");
     });
 }

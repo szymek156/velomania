@@ -2,46 +2,27 @@
 //! Refer to BLE GATTS Fitness Machine Profile documentation
 use std::pin::Pin;
 
-use anyhow::anyhow;
-use anyhow::Context;
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 
-use btleplug::api::Characteristic;
-use btleplug::api::Peripheral as _;
-use btleplug::api::ValueNotification;
-use btleplug::api::WriteType;
-use btleplug::platform::Peripheral;
-use futures::Stream;
-use futures::StreamExt;
+use btleplug::{
+    api::{Characteristic, Peripheral as _, ValueNotification, WriteType},
+    platform::Peripheral,
+};
+use futures::{Stream, StreamExt};
 use num_traits::FromPrimitive;
 
-use byteorder::ByteOrder;
-use byteorder::LittleEndian;
-use tokio::sync::broadcast::Receiver;
-use tokio::sync::broadcast::Sender;
+use byteorder::{ByteOrder, LittleEndian};
+use tokio::sync::broadcast::{Receiver, Sender};
 use uuid::Uuid;
 
 use crate::ble_client::BleClient;
-use crate::indoor_bike_data_defs::BikeData;
-use crate::indoor_bike_data_defs::BikeDataFlags;
-use crate::indoor_bike_data_defs::ControlPointNotificationData;
-use crate::indoor_bike_data_defs::ControlPointOpCode;
-use crate::indoor_bike_data_defs::ControlPointResult;
-use crate::indoor_bike_data_defs::FitnessMachineFeatures;
-use crate::indoor_bike_data_defs::MachineStatusOpCode;
-use crate::indoor_bike_data_defs::Range;
-use crate::indoor_bike_data_defs::TargetSettingFeatures;
-use crate::indoor_bike_data_defs::BIKE_DATA_FLAGS_LEN;
-use crate::indoor_bike_data_defs::CONTROL_POINT;
-use crate::indoor_bike_data_defs::FITNESS_MACHINE_FEATURES_LEN;
-use crate::indoor_bike_data_defs::INDOOR_BIKE_DATA;
-use crate::indoor_bike_data_defs::MACHINE_FEATURE;
-use crate::indoor_bike_data_defs::MACHINE_STATUS;
-use crate::indoor_bike_data_defs::SERVICE_UUID;
-use crate::indoor_bike_data_defs::SUPPORTED_POWER_RANGE;
-use crate::indoor_bike_data_defs::SUPPORTED_RESISTANCE_LEVEL;
-use crate::indoor_bike_data_defs::TARGET_SETTING_FEATURES_LEN;
-use crate::indoor_bike_data_defs::TRAINING_STATUS;
+use crate::indoor_bike_data_defs::{
+    BikeData, BikeDataFlags, ControlPointNotificationData, ControlPointOpCode, ControlPointResult,
+    FitnessMachineFeatures, MachineStatusOpCode, Range, TargetSettingFeatures, BIKE_DATA_FLAGS_LEN,
+    CONTROL_POINT, FITNESS_MACHINE_FEATURES_LEN, INDOOR_BIKE_DATA, MACHINE_FEATURE, MACHINE_STATUS,
+    SERVICE_UUID, SUPPORTED_POWER_RANGE, SUPPORTED_RESISTANCE_LEVEL, TARGET_SETTING_FEATURES_LEN,
+    TRAINING_STATUS,
+};
 use crate::scalar_converter::ScalarType;
 
 // TODO: it's getting messy, refactor
@@ -51,7 +32,7 @@ pub struct IndoorBikeFitnessMachine {
     client: Peripheral,
     control_point: Characteristic,
     feature: Characteristic,
-    resistance_range: Range<f64>,
+    _resistance_range: Range<f64>,
     power_range: Range<i16, u16>,
     indoor_bike_tx: Sender<BikeData>,
     training_tx: Sender<String>,
@@ -91,7 +72,7 @@ impl IndoorBikeFitnessMachine {
                 client,
                 control_point,
                 feature,
-                resistance_range,
+                _resistance_range: resistance_range,
                 power_range,
                 indoor_bike_tx,
                 training_tx,
@@ -178,24 +159,22 @@ impl IndoorBikeFitnessMachine {
 
     /// Get rx endpoint for status notifications
     /// To unsub, simply drop rx
-    // TODO: let it be a string for now?
     pub fn subscribe_for_indoor_bike_notifications(&self) -> Receiver<BikeData> {
-        
         self.indoor_bike_tx.subscribe()
     }
 
     pub fn subscribe_for_training_notifications(&self) -> Receiver<String> {
-        
         self.training_tx.subscribe()
     }
 
-    pub fn subscribe_for_machine_notifications(&self) -> Receiver<String> {
-        
+    // TODO: let it be a string for now?
+    pub fn _subscribe_for_machine_notifications(&self) -> Receiver<String> {
         self.machine_tx.subscribe()
     }
 
-    pub fn subscribe_for_control_point_notifications(&self) -> Receiver<ControlPointNotificationData> {
-        
+    pub fn subscribe_for_control_point_notifications(
+        &self,
+    ) -> Receiver<ControlPointNotificationData> {
         self.control_point_tx.subscribe()
     }
 

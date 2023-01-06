@@ -6,7 +6,7 @@ use std::{
 };
 
 use termion::raw::IntoRawMode;
-use tokio::sync::broadcast::{error::RecvError, Receiver};
+use tokio::sync::broadcast::{Receiver};
 
 use crate::{
     common::{duration_to_string, get_power},

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::str::from_utf8;
 
 use anyhow::{anyhow, Result};
