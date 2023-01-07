@@ -438,14 +438,14 @@ fn handle_bike_data_notification(raw_data: &[u8]) -> BikeData {
                 let raw = LittleEndian::read_u16(&raw_data[cursor..]);
                 cursor += 2;
 
-                let conv = ScalarType::new().with_multiplier(1).with_dec_exp(-1);
+                let conv = ScalarType::new().with_multiplier(1).with_bin_exp(-1);
                 bike_data.inst_cadence = Some(conv.to_scalar(raw));
             }
             BikeDataFlags::AvgCadence => {
                 let raw = LittleEndian::read_u16(&raw_data[cursor..]);
                 cursor += 2;
 
-                let conv = ScalarType::new().with_multiplier(1).with_dec_exp(-1);
+                let conv = ScalarType::new().with_multiplier(1).with_bin_exp(-1);
                 bike_data.avg_cadence = Some(conv.to_scalar(raw));
             }
             BikeDataFlags::TotDistance => {
