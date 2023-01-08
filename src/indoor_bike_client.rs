@@ -223,6 +223,24 @@ impl IndoorBikeFitnessMachine {
         Ok(())
     }
 
+    /// Sets machine variables to default states, like target power,
+    /// time elapsed, inclination, etc.
+    pub async fn reset_status(&self) -> Result<()> {
+        let data: [u8; 1] = [ControlPointOpCode::Reset as u8];
+
+        match self
+            .client
+            .write(&self.control_point, &data, WriteType::WithResponse)
+            .await
+            .context("while setting power")
+        {
+            Ok(_) => debug!("Send reset status succeeded"),
+            Err(e) => error!("Failed to send reset command: '{e:?}', continuing"),
+        }
+
+        Ok(())
+    }
+
     /// The control permission remains valid until the connection is terminated, the notification of the Fitness
     /// Machine Status is sent with the value set to Control Permission Lost
     async fn request_control(&self) -> Result<()> {

@@ -222,6 +222,10 @@ async fn start_workout(
             guard.as_ref().cloned().unwrap()
         };
 
+        trainer_commands_tx
+            .send(UserCommands::StartWorkout)
+            .unwrap();
+
         loop {
             tokio::select! {
                 workout_step = workout.next() => {
@@ -266,9 +270,9 @@ async fn start_workout(
                 }
                 Some(control)  = control_workout_rx.recv() => {
                     match control {
-                        WorkoutCommands::Pause=>workout.pause(),
-                        WorkoutCommands::Resume=>todo!(),
-                        WorkoutCommands::SkipStep=>workout.skip_step(),
+                        WorkoutCommands::Pause=> workout.pause(),
+                        WorkoutCommands::Resume=> todo!(),
+                        WorkoutCommands::SkipStep=> workout.skip_step(),
                         WorkoutCommands::Abort => {
                             trainer_commands_tx.send(UserCommands::Exit).unwrap();
                             break;
@@ -316,6 +320,9 @@ async fn control_fit_machine(
             }
             UserCommands::SetTargetPower { power } => {
                 fit.set_power(power).await?;
+            }
+            UserCommands::StartWorkout => {
+                fit.reset_status().await?;
             }
         }
 

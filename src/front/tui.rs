@@ -6,7 +6,7 @@ use std::{
 };
 
 use termion::raw::IntoRawMode;
-use tokio::sync::broadcast::{Receiver};
+use tokio::sync::broadcast::Receiver;
 
 use crate::{
     common::{duration_to_string, get_power},
@@ -66,10 +66,10 @@ pub async fn show(
 fn handle_workout_state(state: WorkoutState) {
     let start_row = 1;
     let nr_lines = 9;
-    clear(start_row, start_row + nr_lines);
+    clear(start_row, start_row + (nr_lines - 1));
 
     let next_step_duration = {
-        if let Some(next) = &state.next_step  {
+        if let Some(next) = &state.next_step {
             duration_to_string(&next.get_step_duration())
         } else {
             "--".to_string()
@@ -127,7 +127,7 @@ fn handle_training_data(data: String) {
 fn handle_bike_data(data: BikeData) {
     let start_row = 10;
     let nr_lines = 11;
-    clear(start_row, start_row + nr_lines);
+    clear(start_row, start_row + (nr_lines - 1));
 
     let data_str = format!("== BIKE DATA==\n\rTIME: {:?} --> {:?}\n\rDISTANCE {:?}\n\r\n\rPOWER {:?}\n\rSPEED{:?}\n\rCADENCE {:?}\n\rAVG POWER {:?}\n\rAVG SPEED {:?}\n\rAVG CADENCE {:?}\n\rRESISTANCE {:?}",
     data.elapsed_time, data.remaining_time, data.tot_distance, data.inst_power, data.inst_speed, data.inst_cadence, data.avg_power, data.avg_speed, data.avg_cadence, data.resistance_lvl);
@@ -149,9 +149,13 @@ fn handle_bike_data(data: BikeData) {
 fn handle_machine_status_data(data: String) {
     let start_row = 22;
     let nr_lines = 1;
-    clear(start_row, start_row + nr_lines);
+    clear(start_row, start_row + (nr_lines - 1));
 
-    let data_str = format!("== MACHINE STATUS==\n\rLAST STATUS: {:?} at {:?}\n\r", data, Instant::now());
+    let data_str = format!(
+        "== MACHINE STATUS==\n\rLAST STATUS: {:?} at {:?}\n\r",
+        data,
+        Instant::now()
+    );
     let stdout = stdout();
 
     let mut stdout = stdout.lock().into_raw_mode().unwrap();

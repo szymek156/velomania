@@ -17,6 +17,8 @@ pub enum UserCommands {
     // Use clap to model possible commands
     // User can type help to get description, for free!
 
+    /// Prepare machine for new workout
+    StartWorkout,
     SetResistance{resistance : u8},
 
     SetTargetPower{power: i16},
