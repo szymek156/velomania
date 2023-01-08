@@ -140,18 +140,23 @@ pub enum MachineStatusOpCode {
 
 // TODO: added only those supported by SUITO
 /// Thing you can change using control point, followed by parameter
+/// DOCS: FTMS_v1.0 4.16.1, Table 4.15
 #[derive(Debug, FromPrimitive, Clone)]
 pub enum ControlPointOpCode {
     RequestControl = 0x0,
+    // Set machine fields to default, like elapsed time to 0, etc. sets training status to idle
     Reset = 0x1,
     SetTargetResistance = 0x4,
     SetTargetPower = 0x5,
+    StartOrResume = 0x7,
+    StopOrPause = 0x8,
     IndoorBikeSimulation = 0x11,
     WheelCircumference = 0x12,
     SpinDownControl = 0x13,
 }
 
 /// Control Point sends an indication as a response to the write request, with given status
+/// DOCS: FTMS_v1.0 4.16.1 Table 4.24
 #[derive(Debug, FromPrimitive, Clone)]
 pub enum ControlPointResult {
     Reserved0 = 0x0,

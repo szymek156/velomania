@@ -83,20 +83,22 @@ async fn main() -> Result<()> {
 
     register_signal_handler(trainer_commands_tx.clone());
 
-    let (fit, bike_notifications, training_notifications) = {
+    let (fit, bike_notifications, training_notifications, machine_status_notifications) = {
         if connect_to_trainer {
             let fit = connect_to_fit().await?;
             let bike_notifications = fit.subscribe_for_indoor_bike_notifications();
             let training_notifications = fit.subscribe_for_training_notifications();
+            let machine_status_notifications = fit.subscribe_for_machine_notifications();
 
             (
                 Some(fit),
                 Some(bike_notifications),
                 Some(training_notifications),
+                Some(machine_status_notifications),
             )
         } else {
             // TODO: create fake data in the future
-            (None, None, None)
+            (None, None, None, None)
         }
     };
 
@@ -112,11 +114,12 @@ async fn main() -> Result<()> {
 
     handle_user_input(app_state.control_workout_tx.clone());
 
-    // Tui shows current step + data from trainer
+    // // Tui shows current step + data from trainer
     let tui_join_handle = tokio::spawn(front::tui::show(
         _rx,
         bike_notifications,
         training_notifications,
+        machine_status_notifications,
     ));
 
     tokio::spawn(async move {

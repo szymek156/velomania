@@ -2,7 +2,7 @@
 
 use std::{
     io::{stdout, Write},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use termion::raw::IntoRawMode;
@@ -19,11 +19,12 @@ pub async fn show(
     mut workout_rx: Receiver<WorkoutState>,
     indoor_bike_notif: Option<Receiver<BikeData>>,
     training_notif: Option<Receiver<String>>,
+    machine_status_notif: Option<Receiver<String>>,
 ) {
     clear_all();
 
-    if let (Some(mut indoor_bike_notif), Some(mut training_notif)) =
-        (indoor_bike_notif, training_notif)
+    if let (Some(mut indoor_bike_notif), Some(mut training_notif), Some(mut machine_status_notif)) =
+        (indoor_bike_notif, training_notif, machine_status_notif)
     {
         loop {
             tokio::select! {
@@ -37,6 +38,10 @@ pub async fn show(
                 Ok(training_data) = training_notif.recv() => {
                     handle_training_data(training_data);
                 }
+                Ok(machine_status) = machine_status_notif.recv() => {
+                    handle_machine_status_data(machine_status);
+                }
+
                 else => {
                     warn!("None of the streams are available, leaving tui task");
                     break;
@@ -126,6 +131,27 @@ fn handle_bike_data(data: BikeData) {
 
     let data_str = format!("== BIKE DATA==\n\rTIME: {:?} --> {:?}\n\rDISTANCE {:?}\n\r\n\rPOWER {:?}\n\rSPEED{:?}\n\rCADENCE {:?}\n\rAVG POWER {:?}\n\rAVG SPEED {:?}\n\rAVG CADENCE {:?}\n\rRESISTANCE {:?}",
     data.elapsed_time, data.remaining_time, data.tot_distance, data.inst_power, data.inst_speed, data.inst_cadence, data.avg_power, data.avg_speed, data.avg_cadence, data.resistance_lvl);
+    let stdout = stdout();
+
+    let mut stdout = stdout.lock().into_raw_mode().unwrap();
+
+    write!(
+        stdout,
+        "{}{}",
+        termion::cursor::Goto(1, start_row),
+        data_str,
+    )
+    .unwrap();
+
+    stdout.flush().unwrap();
+}
+
+fn handle_machine_status_data(data: String) {
+    let start_row = 22;
+    let nr_lines = 1;
+    clear(start_row, start_row + nr_lines);
+
+    let data_str = format!("== MACHINE STATUS==\n\rLAST STATUS: {:?} at {:?}\n\r", data, Instant::now());
     let stdout = stdout();
 
     let mut stdout = stdout.lock().into_raw_mode().unwrap();

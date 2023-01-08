@@ -36,7 +36,7 @@ pub struct IndoorBikeFitnessMachine {
     power_range: Range<i16, u16>,
     indoor_bike_tx: Sender<BikeData>,
     training_tx: Sender<String>,
-    machine_tx: Sender<String>,
+    machine_status_tx: Sender<String>,
     control_point_tx: Sender<ControlPointNotificationData>,
 }
 
@@ -59,7 +59,7 @@ impl IndoorBikeFitnessMachine {
             let control_point = get_characteristic(&client, CONTROL_POINT)
                 .ok_or_else(|| anyhow!("control point char not found!"))?;
 
-            let (indoor_bike_tx, training_tx, machine_tx, control_point_tx) =
+            let (indoor_bike_tx, training_tx, machine_status_tx, control_point_tx) =
                 subscribe_to_characteristics(&client).await?;
 
             let resistance_range = get_resistance_range(&client).await?;
@@ -76,7 +76,7 @@ impl IndoorBikeFitnessMachine {
                 power_range,
                 indoor_bike_tx,
                 training_tx,
-                machine_tx,
+                machine_status_tx,
                 control_point_tx,
             };
 
@@ -168,8 +168,8 @@ impl IndoorBikeFitnessMachine {
     }
 
     // TODO: let it be a string for now?
-    pub fn _subscribe_for_machine_notifications(&self) -> Receiver<String> {
-        self.machine_tx.subscribe()
+    pub fn subscribe_for_machine_notifications(&self) -> Receiver<String> {
+        self.machine_status_tx.subscribe()
     }
 
     pub fn subscribe_for_control_point_notifications(
@@ -262,7 +262,7 @@ async fn subscribe_to_characteristics(
     // subscribers will receive rx endpoint of that channel
     let (indoor_tx, _) = tokio::sync::broadcast::channel(16);
     let (training_tx, _) = tokio::sync::broadcast::channel(16);
-    let (machine_tx, _) = tokio::sync::broadcast::channel(16);
+    let (machine_status_tx, _) = tokio::sync::broadcast::channel(16);
     let (control_point_tx, _) = tokio::sync::broadcast::channel(16);
 
     // Create a stream for incoming notifications
@@ -274,10 +274,10 @@ async fn subscribe_to_characteristics(
         notifications,
         indoor_tx.clone(),
         training_tx.clone(),
-        machine_tx.clone(),
+        machine_status_tx.clone(),
         control_point_tx.clone(),
     ));
-    Ok((indoor_tx, training_tx, machine_tx, control_point_tx))
+    Ok((indoor_tx, training_tx, machine_status_tx, control_point_tx))
 }
 
 /// Gets range of valid power setting, data format defined in GATT_Specification_Supplement_v5
@@ -332,7 +332,7 @@ async fn handle_notifications(
     mut notifications: Pin<Box<dyn Stream<Item = ValueNotification> + Send>>,
     indoor_tx: Sender<BikeData>,
     _training_tx: Sender<String>,
-    _machine_tx: Sender<String>,
+    machine_status_tx: Sender<String>,
     control_point_tx: Sender<ControlPointNotificationData>,
 ) {
     // TODO: when it returns none?
@@ -340,10 +340,9 @@ async fn handle_notifications(
         match data.uuid {
             MACHINE_STATUS => {
                 trace!("Got notification from MACHINE_STATUS: {:?}", data.value);
-                handle_machine_status_notification(&data.value);
+                let status_update = handle_machine_status_notification(&data.value);
 
-                // TODO:
-                // let _ = machine_tx.send(parsed_data);
+                let _ = machine_status_tx.send(format!("{status_update:?}"));
             }
             INDOOR_BIKE_DATA => {
                 trace!("Got notification from INDOOR_BIKE_DATA: {:?}", data.value);
@@ -371,8 +370,9 @@ async fn handle_notifications(
 }
 
 fn handle_control_point_notification(raw_data: &[u8]) -> ControlPointNotificationData {
-    let op_code = raw_data[0];
-    assert_eq!(op_code, 0x80);
+    let response_op_code = raw_data[0];
+    // Hardcoded in the docs to this value
+    assert_eq!(response_op_code, 0x80);
 
     let request_response = ControlPointNotificationData {
         request_op_code: ControlPointOpCode::from_u8(raw_data[1]).unwrap(),
@@ -384,11 +384,13 @@ fn handle_control_point_notification(raw_data: &[u8]) -> ControlPointNotificatio
     request_response
 }
 
-fn handle_machine_status_notification(raw_data: &[u8]) {
+fn handle_machine_status_notification(raw_data: &[u8]) -> MachineStatusOpCode {
     let op_code = raw_data[0];
 
     let parsed_op_code = MachineStatusOpCode::from_u8(op_code).unwrap();
     debug!("Got Machine Status Notification with opcode {parsed_op_code:?}");
+
+    parsed_op_code
 }
 
 /// Handle raw stream from notification into BikeData
