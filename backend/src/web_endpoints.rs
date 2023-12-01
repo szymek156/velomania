@@ -11,11 +11,6 @@ use futures::stream::StreamExt;
 
 use tokio_stream::wrappers::BroadcastStream;
 
-#[get("/hello")]
-async fn hello() -> impl Responder {
-    "HAI"
-}
-
 /// This is a stream endpoint, one line contains one workout state
 /// In HTTP/1 it uses header <transfer-encoding: chunked
 /// IN HTTP/2 uses DATA frames

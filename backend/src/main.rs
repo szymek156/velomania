@@ -114,13 +114,13 @@ async fn main() -> Result<()> {
 
     handle_user_input(app_state.control_workout_tx.clone());
 
-    // // Tui shows current step + data from trainer
-    let tui_join_handle = tokio::spawn(front::tui::show(
-        _rx,
-        bike_notifications,
-        training_notifications,
-        machine_status_notifications,
-    ));
+    // // // Tui shows current step + data from trainer
+    // let tui_join_handle = tokio::spawn(front::tui::show(
+    //     _rx,
+    //     bike_notifications,
+    //     training_notifications,
+    //     machine_status_notifications,
+    // ));
 
     tokio::spawn(async move {
         if let Some(fit) = fit {
@@ -139,13 +139,13 @@ async fn main() -> Result<()> {
         };
 
         workout_join_handle.abort();
-        tui_join_handle.abort();
+        // tui_join_handle.abort();
     });
 
     // Use HTTPS in order to upgrade to HTTP/2 - done automagically when possible by actix,
     // In actix-web H2C (HTTP2 without HTTPS) is not supported,
     // there is an issue opened for it for quite some time
-    let tls_conf = load_rustls_config();
+    let _tls_conf = load_rustls_config();
 
     HttpServer::new(move || {
         // HttpServer accepts an application factory rather than an application instance.
@@ -156,7 +156,6 @@ async fn main() -> Result<()> {
         App::new()
             .wrap(middleware::Logger::default())
             .app_data(app_state.clone())
-            .service(web_endpoints::hello)
             .service(web_endpoints::workout_state_handle)
             .service(web_endpoints::web_socket_handle)
     })

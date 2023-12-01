@@ -26,7 +26,7 @@ impl Actor for WebSocketActor {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!("WS actor started");
+        info!("WS actor started - client connected");
         let workout_state_rx =
             BroadcastStream::new(self.workout_state_rx.resubscribe()).map(|msg| {
                 let state = msg.unwrap();
@@ -132,7 +132,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketActor {
             ws::Message::Pong(_) => {
                 self.hb = Instant::now();
             }
-            ws::Message::Close(_) => todo!(),
+            ws::Message::Close(e) => info!("Connection closed! {e:?}"),
             ws::Message::Nop => todo!(),
         }
     }
