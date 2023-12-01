@@ -176,8 +176,8 @@ fn load_rustls_config() -> rustls::ServerConfig {
         .with_no_client_auth();
 
     // load TLS key/cert files
-    let cert_file = &mut BufReader::new(File::open("tls/cert.pem").unwrap());
-    let key_file = &mut BufReader::new(File::open("tls/key.pem").unwrap());
+    let cert_file = &mut BufReader::new(File::open("backend/tls/cert.pem").unwrap());
+    let key_file = &mut BufReader::new(File::open("backend/tls/key.pem").unwrap());
 
     // convert files to key/cert objects
     let cert_chain = certs(cert_file)

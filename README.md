@@ -1,6 +1,11 @@
 # velomania
 Allows to control BLE enabled indoor trainer (like zwift), but for free and without cartoon graphics!
 
+# Run
+```
+cargo run -p backend -- --ftp-base 300 --workout backend/workouts/12wk_ftp_base/week7/1.zwo
+```
+
 Under heavy development!
 # OS Support
 Currently tested only on Ubuntu
