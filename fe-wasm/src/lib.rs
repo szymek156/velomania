@@ -1,22 +1,34 @@
+pub mod gui;
 mod utils;
 
 use utils::set_panic_hook;
 use wasm_bindgen::prelude::*;
 use web_sys::{ErrorEvent, MessageEvent, WebSocket};
 
+use crate::gui::Gui;
+
 #[wasm_bindgen]
 pub struct State {
-    ws: WebSocket,
+    // ws: WebSocket,
+    web_handle: WebHandle,
 }
 
 #[wasm_bindgen]
 impl State {
+    #[wasm_bindgen(constructor)]
     pub fn new(backend_endpoint: &str) -> Result<State, JsValue> {
-        let ws = State::connect_to_backend(backend_endpoint)?;
+        // let ws = State::connect_to_backend(backend_endpoint)?;
+        let web_handle = WebHandle::new();
 
-        Ok(Self { ws })
+        Ok(Self {
+            //  ws,
+            web_handle,
+        })
     }
 
+    pub async fn start_gui(&self, canvas_id: &str) -> Result<(), JsValue> {
+        self.web_handle.start(canvas_id).await
+    }
     fn connect_to_backend(backend_endpoint: &str) -> Result<WebSocket, JsValue> {
         console_log!("Connecting to a {backend_endpoint}");
         let ws = WebSocket::new(&backend_endpoint)?;
@@ -74,8 +86,74 @@ impl State {
 }
 
 #[wasm_bindgen]
-pub fn init() -> Result<(), JsValue> {
+pub fn init(backend_endpoint: &str) -> Result<State, JsValue> {
     set_panic_hook();
 
-    Ok(())
+    State::new(backend_endpoint)
+}
+
+/// Your handle to the web app from JavaScript.
+#[derive(Clone)]
+#[wasm_bindgen]
+pub struct WebHandle {
+    runner: eframe::WebRunner,
+}
+
+#[wasm_bindgen]
+impl WebHandle {
+    /// Installs a panic hook, then returns.
+    #[allow(clippy::new_without_default)]
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        // Redirect [`log`] message to `console.log` and friends:
+        eframe::WebLogger::init(log::LevelFilter::Debug).ok();
+
+        Self {
+            runner: eframe::WebRunner::new(),
+        }
+    }
+
+    /// Call this once from JavaScript to start your app.
+    #[wasm_bindgen]
+    pub async fn start(&self, canvas_id: &str) -> Result<(), wasm_bindgen::JsValue> {
+        self.runner
+            .start(
+                canvas_id,
+                eframe::WebOptions::default(),
+                Box::new(|cc| Box::new(Gui::new(cc))),
+            )
+            .await
+    }
+
+    // The following are optional:
+
+    /// Shut down eframe and clean up resources.
+    #[wasm_bindgen]
+    pub fn destroy(&self) {
+        self.runner.destroy();
+    }
+
+    /// Example on how to call into your app from JavaScript.
+    #[wasm_bindgen]
+    pub fn example(&self) {
+        if let Some(app) = self.runner.app_mut::<Gui>() {
+            // app.example();
+        }
+    }
+
+    /// The JavaScript can check whether or not your app has crashed:
+    #[wasm_bindgen]
+    pub fn has_panicked(&self) -> bool {
+        self.runner.has_panicked()
+    }
+
+    #[wasm_bindgen]
+    pub fn panic_message(&self) -> Option<String> {
+        self.runner.panic_summary().map(|s| s.message())
+    }
+
+    #[wasm_bindgen]
+    pub fn panic_callstack(&self) -> Option<String> {
+        self.runner.panic_summary().map(|s| s.callstack())
+    }
 }

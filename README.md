@@ -3,7 +3,7 @@ Allows to control BLE enabled indoor trainer (like zwift), but for free and with
 
 # Run
 ```
-cargo run -p backend -- --ftp-base 300 --workout backend/workouts/12wk_ftp_base/week7/1.zwo
+RUST_LOG=info cargo run -p backend -- --ftp-base 300 --workout backend/workouts/12wk_ftp_base/week7/1.zwo
 ```
 
 Under heavy development!
