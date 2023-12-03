@@ -12,3 +12,4 @@ env_logger = "0.8.4"
 [profile.release]
 # Tell `rustc` to optimize for small code size.
 opt-level = "s"
+

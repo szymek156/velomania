@@ -13,6 +13,9 @@ pub struct State {
     web_handle: WebHandle,
 }
 
+// On message, Received Text:
+// "{\"total_steps\":2,\"current_step_number\":1,\"total_workout_duration\":{\"secs\":4800,\"nanos\":0},\"next_step\":{\"IntervalsT\":{\"Repeat\":2,\"OnDuration\":1500,\"OffDuration\":600,\"OnPower\":0.73,\"OffPower\":0.52}},\"current_power_set\":102,\"ftp_base\":200.0,\"current_step\":{\"duration\":{\"secs\":600,\"nanos\":0},\"step\":{\"Warmup\":{\"Duration\":600,\"PowerLow\":0.5,\"PowerHigh\":0.55}},\"elapsed\":{\"secs\":125,\"nanos\":40731351}},\"current_interval\":null,\"workout_elapsed\":{\"secs\":125,\"nanos\":40730481}}"
+
 #[wasm_bindgen]
 impl State {
     #[wasm_bindgen(constructor)]
